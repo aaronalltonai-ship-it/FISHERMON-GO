@@ -1,0 +1,144 @@
+import React, { useState } from 'react';
+import { motion } from 'motion/react';
+import { X, Coins, Anchor, Droplet, Fish as FishIcon, Ship } from 'lucide-react';
+import { SHOP_ITEMS } from '../constants';
+import { PlayerState } from '../types';
+
+interface Props {
+  playerState: PlayerState;
+  setPlayerState: React.Dispatch<React.SetStateAction<PlayerState>>;
+  onClose: () => void;
+}
+
+export function Shop({ playerState, setPlayerState, onClose }: Props) {
+  const [activeTab, setActiveTab] = useState<'rods' | 'lures' | 'baits' | 'boats'>('rods');
+
+  const handleBuy = (category: keyof typeof SHOP_ITEMS, item: any) => {
+    if (playerState.money >= item.price && !playerState.inventory[category].includes(item.id)) {
+      setPlayerState(prev => ({
+        ...prev,
+        money: prev.money - item.price,
+        inventory: {
+          ...prev.inventory,
+          [category]: [...prev.inventory[category], item.id]
+        }
+      }));
+    }
+  };
+
+  const handleEquip = (category: keyof typeof SHOP_ITEMS, itemId: string) => {
+    // Map category to equipped key
+    const equipKey = category.slice(0, -1) as keyof PlayerState['equipped'];
+    setPlayerState(prev => ({
+      ...prev,
+      equipped: {
+        ...prev.equipped,
+        [equipKey]: itemId
+      }
+    }));
+  };
+
+  const renderItems = (category: keyof typeof SHOP_ITEMS) => {
+    const items = SHOP_ITEMS[category];
+    const equipKey = category.slice(0, -1) as keyof PlayerState['equipped'];
+    
+    return (
+      <div className="grid grid-cols-1 gap-3 overflow-y-auto pb-20">
+        {items.map(item => {
+          const isOwned = playerState.inventory[category].includes(item.id);
+          const isEquipped = playerState.equipped[equipKey] === item.id;
+          const canAfford = playerState.money >= item.price;
+
+          return (
+            <div key={item.id} className="bg-zinc-800/50 border border-white/10 rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-white font-bold">{item.name}</h3>
+                  <p className="text-white/50 text-xs">{item.desc}</p>
+                </div>
+                {!isOwned && (
+                  <div className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-2 py-1 rounded-lg text-sm">
+                    <Coins size={14} />
+                    {item.price}
+                  </div>
+                )}
+              </div>
+              
+              <div className="mt-2 flex justify-end">
+                {isEquipped ? (
+                  <button disabled className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-bold border border-blue-500/30">
+                    Equipped
+                  </button>
+                ) : isOwned ? (
+                  <button 
+                    onClick={() => handleEquip(category, item.id)}
+                    className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm font-bold transition-colors"
+                  >
+                    Equip
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => handleBuy(category, item)}
+                    disabled={!canAfford}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${canAfford ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'}`}
+                  >
+                    Buy
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: '100%' }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: '100%' }}
+      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+      className="absolute inset-0 z-50 bg-zinc-950 flex flex-col"
+    >
+      <div className="p-4 flex justify-between items-center border-b border-white/10 bg-zinc-900">
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-bold text-white">Tackle Shop</h2>
+          <div className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-3 py-1 rounded-full text-sm">
+            <Coins size={16} />
+            {playerState.money}
+          </div>
+        </div>
+        <button 
+          onClick={onClose}
+          className="p-2 text-white/60 hover:text-white bg-white/5 rounded-full"
+        >
+          <X size={24} />
+        </button>
+      </div>
+      
+      <div className="flex p-2 gap-2 bg-zinc-900 border-b border-white/5 overflow-x-auto no-scrollbar shrink-0">
+        <TabButton active={activeTab === 'rods'} onClick={() => setActiveTab('rods')} icon={<Anchor size={16} />} label="Rods" />
+        <TabButton active={activeTab === 'lures'} onClick={() => setActiveTab('lures')} icon={<FishIcon size={16} />} label="Lures" />
+        <TabButton active={activeTab === 'baits'} onClick={() => setActiveTab('baits')} icon={<Droplet size={16} />} label="Baits" />
+        <TabButton active={activeTab === 'boats'} onClick={() => setActiveTab('boats')} icon={<Ship size={16} />} label="Boats" />
+      </div>
+
+      <div className="flex-1 overflow-hidden p-4">
+        {renderItems(activeTab)}
+      </div>
+    </motion.div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}

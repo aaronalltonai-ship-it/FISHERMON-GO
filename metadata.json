@@ -1,0 +1,8 @@
+{
+  "name": "AR Catch: Real World Fishing",
+  "description": "An augmented reality game that turns any real-world body of water into a fishing spot.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
