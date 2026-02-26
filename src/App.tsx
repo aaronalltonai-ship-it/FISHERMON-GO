@@ -5,10 +5,11 @@ import { Shop } from './components/Shop';
 import { Leaderboard } from './components/Leaderboard';
 import { MapSpots } from './components/MapSpots';
 import { MapView } from './components/MapView';
+import { Passport } from './components/Passport';
 import { detectWater, generateFishStats, generateFishImage, generateFishVideo, pollVideoOperation, getDownloadUrl, generatePresetVideos } from './lib/gemini';
-import { MapPin, Fish, Loader2, Crosshair, PackageOpen, X, Camera as CameraIcon, Store, Trophy, Coins, Map as MapIcon, ChevronLeft, Video, Play, Sparkles } from 'lucide-react';
+import { MapPin, Fish, Loader2, Crosshair, PackageOpen, X, Camera as CameraIcon, Store, Trophy, Coins, Map as MapIcon, ChevronLeft, Video, Play, Sparkles, Globe2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FishData, PlayerState } from './types';
+import { FishData, PlayerState, PassportDestination } from './types';
 import { SHOP_ITEMS } from './constants';
 import { FishVisual } from './components/FishVisual';
 
@@ -27,6 +28,16 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   money: 0,
   level: 1,
   xp: 0,
+  streak: 0,
+  lastWaterType: undefined,
+  dailyRewardLastClaim: undefined,
+  dailyQuest: {
+    date: '',
+    target: 3,
+    progress: 0,
+    reward: 250,
+    complete: false
+  },
   inventory: {
     rods: ['rod_basic'],
     lures: ['lure_none'],
@@ -45,6 +56,60 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   }
 };
 
+const getTodayKey = () => new Date().toISOString().slice(0, 10);
+
+const buildDailyQuest = () => {
+  const target = Math.floor(Math.random() * 3) + 3; // 3-5 fish
+  const reward = target * 150;
+  return {
+    date: getTodayKey(),
+    target,
+    progress: 0,
+    reward,
+    complete: false
+  };
+};
+
+const ensureDailyQuest = (state: PlayerState): PlayerState => {
+  if (!state.dailyQuest || state.dailyQuest.date !== getTodayKey()) {
+    return {
+      ...state,
+      dailyQuest: buildDailyQuest()
+    };
+  }
+  return state;
+};
+
+const normalizePlayerState = (saved: Partial<PlayerState>): PlayerState => {
+  const merged = {
+    ...DEFAULT_PLAYER_STATE,
+    ...saved,
+    inventory: {
+      ...DEFAULT_PLAYER_STATE.inventory,
+      ...(saved.inventory || {})
+    },
+    equipped: {
+      ...DEFAULT_PLAYER_STATE.equipped,
+      ...(saved.equipped || {})
+    },
+    rodCustomization: {
+      ...DEFAULT_PLAYER_STATE.rodCustomization,
+      ...(saved.rodCustomization || {})
+    }
+  } as PlayerState;
+  return ensureDailyQuest(merged);
+};
+
+const getNextLevelXp = (level: number) => Math.round(120 + level * 80);
+
+const getXpForFish = (fish: FishData) => {
+  const base = Math.max(10, Math.round(fish.price / 10));
+  const rarityBonus = fish.rarity === 'Legendary' - 80 : fish.rarity === 'Epic' - 40 : fish.rarity === 'Rare' - 20 : 0;
+  return base + rarityBonus;
+};
+
+const SAFETY_WARNING_KEY = 'fishermon-safety-warning-v1';
+const PASSPORT_STORAGE_KEY = 'fishermon-passport-destination-v1';
 export default function App() {
   const [state, setState] = useState<GameState>('MAP');
   const [waterType, setWaterType] = useState<string | null>(null);
@@ -54,9 +119,14 @@ export default function App() {
   const [customSpots, setCustomSpots] = useState<Array<{ lat: number; lng: number; name: string; type: string }>>([]);
   
   const [showFishdex, setShowFishdex] = useState(false);
+  const [fishdexSort, setFishdexSort] = useState<'recent' | 'value' | 'rarity' | 'weight' | 'length'>('recent');
+  const [fishdexFilter, setFishdexFilter] = useState<string>('All');
   const [showShop, setShowShop] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showMapSpots, setShowMapSpots] = useState(false);
+  const [showSafetyWarning, setShowSafetyWarning] = useState(false);
+  const [showPassport, setShowPassport] = useState(false);
+  const [passportDestination, setPassportDestination] = useState<PassportDestination | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [isGeneratingPresets, setIsGeneratingPresets] = useState(false);
@@ -76,7 +146,7 @@ export default function App() {
     const savedPlayer = localStorage.getItem('playerState');
     if (savedPlayer) {
       try {
-        setPlayerState(JSON.parse(savedPlayer));
+        setPlayerState(normalizePlayerState(JSON.parse(savedPlayer)));
       } catch (e) {}
     }
     const savedSpots = localStorage.getItem('customSpots');
@@ -88,8 +158,34 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const acknowledged = localStorage.getItem(SAFETY_WARNING_KEY) === '1';
+    setShowSafetyWarning(!acknowledged);
+  }, []);
+
+  useEffect(() => {
+    const savedPassport = localStorage.getItem(PASSPORT_STORAGE_KEY);
+    if (savedPassport) {
+      try {
+        setPassportDestination(JSON.parse(savedPassport));
+      } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    if (passportDestination) {
+      localStorage.setItem(PASSPORT_STORAGE_KEY, JSON.stringify(passportDestination));
+    } else {
+      localStorage.removeItem(PASSPORT_STORAGE_KEY);
+    }
+  }, [passportDestination]);
+
+  useEffect(() => {
     localStorage.setItem('playerState', JSON.stringify(playerState));
   }, [playerState]);
+
+  useEffect(() => {
+    setPlayerState(prev => ensureDailyQuest(prev));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('customSpots', JSON.stringify(customSpots));
@@ -115,6 +211,7 @@ export default function App() {
       const result = await detectWater(base64);
       if (result.hasWater) {
         setWaterType(result.waterType);
+        setPlayerState(prev => ({ ...prev, lastWaterType: result.waterType }));
         
         // Add to custom spots if we have location
         if (navigator.geolocation) {
@@ -154,7 +251,7 @@ export default function App() {
       setIsGeneratingPresets(true);
       const operation = await generatePresetVideos(type);
       const finishedOp = await pollVideoOperation(operation);
-      const downloadLink = finishedOp.response?.generatedVideos?.[0]?.video?.uri;
+      const downloadLink = finishedOp.response-.generatedVideos-.[0]-.video-.uri;
       
       if (downloadLink) {
         const videoUrl = await getDownloadUrl(downloadLink);
@@ -167,11 +264,32 @@ export default function App() {
     }
   };
 
+  const canClaimDaily = playerState.dailyRewardLastClaim !== getTodayKey();
+
+  const handleClaimDaily = () => {
+    if (!canClaimDaily) return;
+    const reward = 300 + playerState.level * 20;
+    setPlayerState(prev => ({
+      ...prev,
+      money: prev.money + reward,
+      dailyRewardLastClaim: getTodayKey()
+    }));
+  };
+
+  const handleInstantCast = () => {
+    if (!playerState.lastWaterType) return;
+    setWaterType(playerState.lastWaterType);
+    setState('READY');
+    if (!presetVideo) {
+      handleGeneratePresets(playerState.lastWaterType);
+    }
+  };
+
   const handleCast = () => {
     setState('WAITING');
     // Magic bait reduces wait time slightly, but base time is longer now
     const baitItem = SHOP_ITEMS.baits.find(b => b.id === playerState.equipped.bait);
-    const isMagic = baitItem?.id === 'bait_magic';
+    const isMagic = baitItem-.id === 'bait_magic';
     
     // Base wait time is 8-15 seconds to make it feel slower/more realistic
     let waitTime = Math.random() * 7000 + 8000;
@@ -186,7 +304,7 @@ export default function App() {
           if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
           
           setTimeout(() => {
-            setState(s => s === 'BITING' ? 'ESCAPED' : s);
+            setState(s => s === 'BITING' - 'ESCAPED' : s);
           }, 3000);
           
           return 'BITING';
@@ -211,7 +329,7 @@ export default function App() {
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
       
       setTimeout(() => {
-        setState(s => s === 'BITING' ? 'ESCAPED' : s);
+        setState(s => s === 'BITING' - 'ESCAPED' : s);
       }, 3000);
     }
   };
@@ -232,9 +350,9 @@ export default function App() {
       
       const stats = await generateFishStats(
         waterType || 'mysterious water',
-        lureItem?.name || 'No Lure',
-        baitItem?.name || 'Bread',
-        boatItem?.name || 'Shore'
+        lureItem-.name || 'No Lure',
+        baitItem-.name || 'Bread',
+        boatItem-.name || 'Shore'
       );
       
       const fishWithId = { ...stats, id: Date.now().toString(), caughtAt: Date.now() };
@@ -245,25 +363,43 @@ export default function App() {
       }
       
       setCurrentFish(fishWithId);
-      
-      // Calculate XP based on price/rarity
-      const xpGained = Math.floor(fishWithId.price / 5) + 10;
-      
+
       setPlayerState(prev => {
-        let newXp = prev.xp + xpGained;
-        let newLevel = prev.level;
-        const xpNeeded = newLevel * 100;
-        
-        if (newXp >= xpNeeded) {
-          newLevel++;
-          newXp -= xpNeeded;
-          // Could add a level up notification here
+        const baseState = ensureDailyQuest(prev);
+        const streak = baseState.streak + 1;
+        let xp = baseState.xp + getXpForFish(fishWithId) + streak * 2;
+        let level = baseState.level;
+        let next = getNextLevelXp(level);
+        while (xp >= next) {
+          xp -= next;
+          level += 1;
+          next = getNextLevelXp(level);
         }
-        
+
+        const quest = baseState.dailyQuest;
+        let questProgress = quest.progress;
+        let questComplete = quest.complete;
+        let questReward = 0;
+        if (!questComplete) {
+          questProgress = Math.min(quest.target, quest.progress + 1);
+          if (questProgress >= quest.target) {
+            questComplete = true;
+            questReward = quest.reward;
+          }
+        }
+
         return {
-          ...prev,
-          level: newLevel,
-          xp: newXp
+          ...baseState,
+          level,
+          xp,
+          streak,
+          lastWaterType: waterType || baseState.lastWaterType,
+          money: baseState.money + questReward,
+          dailyQuest: {
+            ...quest,
+            progress: questProgress,
+            complete: questComplete
+          }
         };
       });
       
@@ -297,11 +433,62 @@ export default function App() {
 
   const getRodMultiplier = () => {
     const rod = SHOP_ITEMS.rods.find(r => r.id === playerState.equipped.rod);
-    return rod?.multiplier || 1;
+    return rod-.multiplier || 1;
   };
 
   const isMagicBait = playerState.equipped.bait === 'bait_magic';
   const currentRodCustomization = playerState.rodCustomization[playerState.equipped.rod];
+  const nextLevelXp = getNextLevelXp(playerState.level);
+  const xpProgress = Math.min(1, playerState.xp / nextLevelXp);
+  const rarityRank: Record<string, number> = {
+    Common: 1,
+    Uncommon: 2,
+    Rare: 3,
+    Epic: 4,
+    Legendary: 5,
+    Mythic: 6
+  };
+  const fishdexRarities = Array.from(new Set(fishdex.map(f => f.rarity))).sort((a, b) => {
+    const aRank = rarityRank[a] || 0;
+    const bRank = rarityRank[b] || 0;
+    if (aRank !== bRank) return aRank - bRank;
+    return a.localeCompare(b);
+  });
+  const fishdexFiltered = fishdexFilter === 'All'
+    - fishdex
+    : fishdex.filter(f => f.rarity === fishdexFilter);
+  const fishdexView = [...fishdexFiltered].sort((a, b) => {
+    switch (fishdexSort) {
+      case 'value':
+        return b.price - a.price;
+      case 'rarity':
+        return (rarityRank[b.rarity] || 0) - (rarityRank[a.rarity] || 0);
+      case 'weight':
+        return b.weightKg - a.weightKg;
+      case 'length':
+        return b.lengthCm - a.lengthCm;
+      case 'recent':
+      default:
+        return b.caughtAt - a.caughtAt;
+    }
+  });
+  const fishdexTotalValue = fishdexFiltered.reduce((sum, fish) => sum + fish.price, 0);
+  const sortOptions = [
+    { id: 'recent', label: 'Recent' },
+    { id: 'value', label: 'Value' },
+    { id: 'rarity', label: 'Rarity' },
+    { id: 'weight', label: 'Weight' },
+    { id: 'length', label: 'Length' }
+  ];
+
+  const handleSellFiltered = () => {
+    if (fishdexFiltered.length === 0) return;
+    const sellIds = new Set(fishdexFiltered.map(f => f.id));
+    const remaining = fishdex.filter(f => !sellIds.has(f.id));
+    setFishdex(remaining);
+    localStorage.setItem('fishdex', JSON.stringify(remaining));
+    setPlayerState(prev => ({ ...prev, money: prev.money + fishdexTotalValue }));
+  };
 
   const handleGenerateVideo = async () => {
     if (!currentFish) return;
@@ -320,7 +507,7 @@ export default function App() {
       setVideoStatus('Generating video (this may take a few minutes)...');
       
       const finishedOp = await pollVideoOperation(operation);
-      const downloadLink = finishedOp.response?.generatedVideos?.[0]?.video?.uri;
+      const downloadLink = finishedOp.response-.generatedVideos-.[0]-.video-.uri;
       
       if (downloadLink) {
         setVideoStatus('Downloading video...');
@@ -329,7 +516,7 @@ export default function App() {
         setCurrentFish(completeFish);
         
         // Update in fishdex if already saved
-        const newDex = fishdex.map(f => f.id === currentFish.id ? completeFish : f);
+        const newDex = fishdex.map(f => f.id === currentFish.id - completeFish : f);
         setFishdex(newDex);
         localStorage.setItem('fishdex', JSON.stringify(newDex));
       }
@@ -342,12 +529,54 @@ export default function App() {
     }
   };
 
+  const acknowledgeSafetyWarning = () => {
+    localStorage.setItem(SAFETY_WARNING_KEY, '1');
+    setShowSafetyWarning(false);
+  };
+
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-zinc-900 font-sans">
+    <div className="relative w-full h-screen overflow-hidden app-shell">
+      <div className="app-backdrop" />
+      <div className="app-grid" />
+      <div className="app-vignette" />
       
-      {state === 'MAP' && <MapView spots={customSpots} onProximityChange={setProximity} />}
+      {state === 'MAP' && (
+        <MapView
+          spots={customSpots}
+          onProximityChange={setProximity}
+          overridePosition={
+            passportDestination - [passportDestination.lat, passportDestination.lng] : null
+          }
+          overrideLabel={passportDestination-.label -- null}
+        />
+      )}
       
       {state !== 'MAP' && <Camera ref={cameraRef} />}
+
+      {showSafetyWarning && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="glass-panel w-[90%] max-w-xl p-6 text-white">
+            <h2 className="title-font text-2xl mb-2">Safety Warning</h2>
+            <p className="text-white/70 text-sm mb-4">
+              Play responsibly and stay aware of your surroundings.
+            </p>
+            <ul className="list-disc list-inside text-white/70 text-sm space-y-2">
+              <li>Never play while driving or in unsafe areas.</li>
+              <li>Stay clear of dangerous waters, cliffs, or restricted zones.</li>
+              <li>Respect private property and local regulations.</li>
+              <li>Supervise children at all times near water.</li>
+            </ul>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={acknowledgeSafetyWarning}
+                className="cta-primary px-4 py-2 rounded-xl text-sm font-semibold"
+              >
+                I Understand
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Top Bar */}
       <div className="absolute top-0 left-0 right-0 p-4 z-10 flex justify-between items-start pointer-events-none">
@@ -355,7 +584,7 @@ export default function App() {
           {state !== 'MAP' && (
             <button 
               onClick={() => setState('MAP')}
-              className="bg-black/60 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2 text-white border border-white/10 pointer-events-auto hover:bg-black/80"
+              className="hud-pill px-4 py-2 flex items-center gap-2 text-white pointer-events-auto hover:bg-black/80 transition-colors"
             >
               <ChevronLeft size={16} />
               <span className="text-sm font-medium">Back to Map</span>
@@ -363,31 +592,66 @@ export default function App() {
           )}
           
           {waterType && state !== 'MAP' && (
-            <div className="bg-black/40 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2 text-white border border-white/10 pointer-events-auto">
-              <MapPin size={16} className="text-blue-400" />
+            <div className="hud-pill px-4 py-2 flex items-center gap-2 text-white pointer-events-auto">
+              <MapPin size={16} className="text-cyan-300 hud-icon" />
               <span className="text-sm font-medium capitalize">
                 {waterType} detected
               </span>
             </div>
           )}
+
+          {passportDestination && (
+            <button
+              onClick={() => setShowPassport(true)}
+              className="hud-pill px-4 py-2 flex items-center gap-2 text-emerald-200 pointer-events-auto hover:bg-black/60 transition-colors"
+            >
+              <Globe2 size={16} className="text-emerald-300 hud-icon" />
+              <span className="text-sm font-medium">Passport: {passportDestination.label}</span>
+            </button>
+          )}
           
-          <div className="bg-black/40 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2 text-yellow-400 border border-white/10 pointer-events-auto font-bold">
-            <Coins size={16} />
+          <div className="hud-pill px-4 py-2 flex items-center gap-2 text-yellow-300 pointer-events-auto font-bold">
+            <Coins size={16} className="hud-icon" />
             {playerState.money}
           </div>
           
-          <div className="bg-black/40 backdrop-blur-md rounded-full px-4 py-2 flex flex-col gap-1 border border-white/10 pointer-events-auto w-32">
-            <div className="flex justify-between items-center text-xs font-bold text-white">
-              <span>LVL {playerState.level}</span>
-              <span className="text-white/50">{playerState.xp}/{playerState.level * 100}</span>
+          <div className="hud-pill px-4 py-2 pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 text-[10px] uppercase tracking-widest text-white/70">
+              <span>Level {playerState.level}</span>
+              <span>{playerState.xp}/{nextLevelXp} XP</span>
             </div>
-            <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-blue-500 rounded-full transition-all duration-500" 
-                style={{ width: `${(playerState.xp / (playerState.level * 100)) * 100}%` }}
-              />
+            <div className="mt-1 h-1.5 w-full rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-cyan-400" style={{ width: `${xpProgress * 100}%` }} />
             </div>
           </div>
+
+          <div className="hud-pill px-4 py-2 flex items-center gap-2 text-emerald-200 pointer-events-auto font-bold">
+            <Fish size={14} className="text-emerald-300" />
+            Streak {playerState.streak}
+          </div>
+
+          <div className="glass-panel px-4 py-2 pointer-events-auto text-white/80 text-xs">
+            <div className="flex items-center justify-between gap-4">
+              <span className="uppercase tracking-widest text-[10px] text-cyan-200">Daily Quest</span>
+              <span className="text-emerald-200 font-bold">{playerState.dailyQuest.progress}/{playerState.dailyQuest.target}</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-emerald-400"
+                style={{ width: `${Math.min(1, playerState.dailyQuest.progress / playerState.dailyQuest.target) * 100}%` }}
+              />
+            </div>
+            <div className="mt-1 text-[10px] text-white/50">
+              Reward: {playerState.dailyQuest.reward} coins {playerState.dailyQuest.complete - '(claimed)' : ''}
+            </div>
+          </div>
+
+          <button
+            onClick={handleClaimDaily}
+            className={`hud-pill px-4 py-2 text-xs font-bold uppercase tracking-widest pointer-events-auto ${canClaimDaily - 'text-amber-200 border-amber-300/30' : 'text-white/40 border-white/10'} `}
+          >
+            {canClaimDaily - 'Claim Daily Reward' : 'Daily Reward Claimed'}
+          </button>
         </div>
         
         <div className="flex flex-col gap-2 pointer-events-auto">
@@ -425,33 +689,40 @@ export default function App() {
           )}
           
           <div className="bg-black/40 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-2 text-white/80 border border-white/10">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: currentRodCustomization?.color || '#fff' }} />
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: currentRodCustomization-.color || '#fff' }} />
             <span className="text-[10px] font-bold uppercase tracking-wider">
-              {SHOP_ITEMS.rods.find(r => r.id === playerState.equipped.rod)?.name}
+              {SHOP_ITEMS.rods.find(r => r.id === playerState.equipped.rod)-.name}
             </span>
           </div>
 
           <button 
             onClick={() => setShowMapSpots(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <MapIcon size={20} />
           </button>
+          <button
+            onClick={() => setShowPassport(true)}
+            className="hud-button p-3 text-white transition-colors"
+            title="Passport Travel"
+          >
+            <Globe2 size={20} />
+          </button>
           <button 
             onClick={() => setShowFishdex(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <PackageOpen size={20} />
           </button>
           <button 
             onClick={() => setShowShop(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <Store size={20} />
           </button>
           <button 
             onClick={() => setShowLeaderboard(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <Trophy size={20} />
           </button>
@@ -468,13 +739,24 @@ export default function App() {
             exit={{ opacity: 0, y: 20 }}
             className="absolute bottom-12 left-0 right-0 flex justify-center z-10"
           >
-            <button 
-              onClick={() => setState('CAMERA')}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded-full px-8 py-4 font-bold text-lg shadow-lg flex items-center gap-3"
-            >
-              <CameraIcon size={24} />
-              Open Camera to Fish
-            </button>
+            <div className="flex flex-col md:flex-row gap-3 items-center">
+              <button 
+                onClick={() => setState('CAMERA')}
+                className="cta-primary text-white rounded-full px-8 py-4 font-bold text-lg flex items-center gap-3 tracking-wide"
+              >
+                <CameraIcon size={24} />
+                Open Camera to Fish
+              </button>
+              {playerState.lastWaterType && (
+                <button 
+                  onClick={handleInstantCast}
+                  className="cta-secondary text-emerald-200 rounded-full px-6 py-4 font-bold text-sm flex items-center gap-2 tracking-widest uppercase"
+                >
+                  <Play size={16} />
+                  Instant Cast ({playerState.lastWaterType})
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
 
@@ -488,7 +770,7 @@ export default function App() {
           >
             <button 
               onClick={handleScan}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded-full px-8 py-4 font-bold text-lg shadow-lg flex items-center gap-3"
+              className="cta-primary text-white rounded-full px-8 py-4 font-bold text-lg flex items-center gap-3 tracking-wide"
             >
               <Crosshair size={24} />
               Scan Water
@@ -612,8 +894,14 @@ export default function App() {
           <TensionReeling 
             rodMultiplier={getRodMultiplier()}
             onCatch={handleCatch}
-            onBreak={() => setState('BROKEN')}
-            onEscape={() => setState('ESCAPED')}
+            onBreak={() => {
+              setPlayerState(prev => ({ ...prev, streak: 0 }));
+              setState('BROKEN');
+            }}
+            onEscape={() => {
+              setPlayerState(prev => ({ ...prev, streak: 0 }));
+              setState('ESCAPED');
+            }}
           />
         )}
 
@@ -630,7 +918,7 @@ export default function App() {
               <h2 className="text-3xl font-black text-white text-center mb-2 relative z-10">CAUGHT!</h2>
               
               <div className="w-48 h-48 mx-auto bg-black/50 rounded-2xl border border-white/10 flex items-center justify-center relative z-10 mb-6 overflow-hidden">
-                {currentFish.video ? (
+                {currentFish.video - (
                   <video 
                     src={currentFish.video} 
                     autoPlay 
@@ -640,9 +928,9 @@ export default function App() {
                     className="w-full h-full object-cover mix-blend-screen"
                     style={{ filter: 'contrast(1.2) brightness(1.1)' }}
                   />
-                ) : currentFish.image ? (
+                ) : currentFish.image - (
                   <img src={currentFish.image} alt={currentFish.name} className="w-full h-full object-cover" />
-                ) : isGeneratingImage ? (
+                ) : isGeneratingImage - (
                   <div className="flex flex-col items-center text-white/50">
                     <Loader2 className="animate-spin mb-2" size={32} />
                     <span className="text-xs">Developing photo...</span>
@@ -716,10 +1004,10 @@ export default function App() {
             className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-6"
           >
             <h2 className="text-4xl font-black text-red-500 mb-4">
-              {state === 'BROKEN' ? 'LINE BROKE!' : 'IT GOT AWAY!'}
+              {state === 'BROKEN' - 'LINE BROKE!' : 'IT GOT AWAY!'}
             </h2>
             <p className="text-white/80 text-lg mb-8 text-center">
-              {state === 'BROKEN' ? 'You reeled in too hard. Watch the tension!' : 'You were too slow. Keep the tension up!'}
+              {state === 'BROKEN' - 'You reeled in too hard. Watch the tension!' : 'You were too slow. Keep the tension up!'}
             </p>
             <button 
               onClick={() => setState('MAP')}
@@ -739,11 +1027,11 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="absolute inset-0 z-50 bg-zinc-950 flex flex-col"
+            className="absolute inset-0 z-50 bg-[#050a14] flex flex-col"
           >
-            <div className="p-4 flex justify-between items-center border-b border-white/10 bg-zinc-900">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <PackageOpen size={24} className="text-blue-400" />
+            <div className="p-4 flex justify-between items-center border-b border-white/10 glass-panel">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2 title-font">
+                <PackageOpen size={24} className="text-cyan-300" />
                 Fishdex
               </h2>
               <button 
@@ -753,20 +1041,62 @@ export default function App() {
                 <X size={24} />
               </button>
             </div>
+
+            <div className="px-4 py-3 flex flex-col gap-3 border-b border-white/5 glass-panel">
+              <div className="flex flex-wrap gap-2">
+                {['All', ...fishdexRarities].map(rarity => (
+                  <button
+                    key={rarity}
+                    onClick={() => setFishdexFilter(rarity)}
+                    className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${fishdexFilter === rarity - 'bg-cyan-400 text-black' : 'bg-white/5 text-white/60 hover:text-white'}`}
+                  >
+                    {rarity}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] uppercase tracking-widest text-white/50">Sort</span>
+                {sortOptions.map(option => (
+                  <button
+                    key={option.id}
+                    onClick={() => setFishdexSort(option.id as typeof fishdexSort)}
+                    className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${fishdexSort === option.id - 'bg-emerald-400 text-black' : 'bg-white/5 text-white/60 hover:text-white'}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+                <button
+                  onClick={handleSellFiltered}
+                  disabled={fishdexFiltered.length === 0}
+                  className={`ml-auto px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${fishdexFiltered.length === 0 - 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-yellow-400 text-black hover:bg-yellow-300'}`}
+                >
+                  Sell Filtered
+                </button>
+              </div>
+              <div className="text-[11px] text-white/60">
+                Showing {fishdexView.length} fish - Total value {fishdexTotalValue}
+              </div>
+            </div>
             
             <div className="flex-1 overflow-y-auto p-4">
-              {fishdex.length === 0 ? (
+              {fishdex.length === 0 - (
                 <div className="h-full flex flex-col items-center justify-center text-white/40">
                   <Fish size={48} className="mb-4 opacity-20" />
                   <p>Your Fishdex is empty.</p>
                   <p className="text-sm">Go catch some fish!</p>
                 </div>
+              ) : fishdexView.length === 0 - (
+                <div className="h-full flex flex-col items-center justify-center text-white/50">
+                  <PackageOpen size={48} className="mb-4 opacity-20" />
+                  <p>No fish match this filter.</p>
+                  <p className="text-sm">Try another rarity or sort.</p>
+                </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
-                  {fishdex.map((fish) => (
-                    <div key={fish.id} className="bg-zinc-900 rounded-2xl p-3 border border-white/5 flex flex-col items-center text-center relative group">
+                  {fishdexView.map((fish) => (
+                    <div key={fish.id} className="glass-panel rounded-2xl p-3 flex flex-col items-center text-center relative group">
                       <div className="w-full aspect-square bg-black/50 rounded-xl mb-3 overflow-hidden flex items-center justify-center relative">
-                        {fish.video ? (
+                        {fish.video - (
                           <video 
                             src={fish.video} 
                             autoPlay 
@@ -776,7 +1106,7 @@ export default function App() {
                             className="w-full h-full object-cover mix-blend-screen"
                             style={{ filter: 'contrast(1.2) brightness(1.1)' }}
                           />
-                        ) : fish.image ? (
+                        ) : fish.image - (
                           <img src={fish.image} alt={fish.name} className="w-full h-full object-cover" />
                         ) : (
                           <FishVisual rarity={fish.rarity} color={fish.color} size={40} />
@@ -832,7 +1162,21 @@ export default function App() {
 
       <AnimatePresence>
         {showMapSpots && (
-          <MapSpots onClose={() => setShowMapSpots(false)} />
+          <MapSpots
+            onClose={() => setShowMapSpots(false)}
+            overrideDestination={passportDestination}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showPassport && (
+          <Passport
+            current={passportDestination}
+            onSelect={(destination) => setPassportDestination(destination)}
+            onClear={() => setPassportDestination(null)}
+            onClose={() => setShowPassport(false)}
+          />
         )}
       </AnimatePresence>
     </div>
