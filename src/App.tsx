@@ -62,6 +62,7 @@ export default function App() {
   const [isGeneratingPresets, setIsGeneratingPresets] = useState(false);
   const [presetVideo, setPresetVideo] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<string>('');
+  const [proximity, setProximity] = useState({ isNearBaitShop: false, isNearTournament: false });
   
   const cameraRef = useRef<CameraRef>(null);
   
@@ -237,10 +238,16 @@ export default function App() {
       );
       
       const fishWithId = { ...stats, id: Date.now().toString(), caughtAt: Date.now() };
+      
+      // Tournament bonus: 2x price and XP if in tournament zone
+      if (proximity.isNearTournament) {
+        fishWithId.price *= 2;
+      }
+      
       setCurrentFish(fishWithId);
       
       // Calculate XP based on price/rarity
-      const xpGained = Math.floor(stats.price / 5) + 10;
+      const xpGained = Math.floor(fishWithId.price / 5) + 10;
       
       setPlayerState(prev => {
         let newXp = prev.xp + xpGained;
@@ -338,7 +345,7 @@ export default function App() {
   return (
     <div className="relative w-full h-screen overflow-hidden bg-zinc-900 font-sans">
       
-      {state === 'MAP' && <MapView spots={customSpots} />}
+      {state === 'MAP' && <MapView spots={customSpots} onProximityChange={setProximity} />}
       
       {state !== 'MAP' && <Camera ref={cameraRef} />}
       
@@ -384,6 +391,28 @@ export default function App() {
         </div>
         
         <div className="flex flex-col gap-2 pointer-events-auto">
+          {proximity.isNearBaitShop && (
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-orange-600/40 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-2 text-orange-200 border border-orange-400/30"
+            >
+              <Store size={14} className="text-orange-300" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Bait Shop Nearby</span>
+            </motion.div>
+          )}
+
+          {proximity.isNearTournament && (
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-blue-600/40 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-2 text-blue-200 border border-blue-400/30 shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+            >
+              <Trophy size={14} className="text-blue-300" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Tournament Zone (2x XP)</span>
+            </motion.div>
+          )}
+
           {isMagicBait && (
             <motion.div 
               animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }}
@@ -787,6 +816,7 @@ export default function App() {
             playerState={playerState} 
             setPlayerState={setPlayerState} 
             onClose={() => setShowShop(false)} 
+            isNearBaitShop={proximity.isNearBaitShop}
           />
         )}
       </AnimatePresence>

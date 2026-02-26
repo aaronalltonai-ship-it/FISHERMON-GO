@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Coins, Anchor, Droplet, Fish as FishIcon, Ship, Palette, Check, PackageOpen } from 'lucide-react';
+import { X, Coins, Anchor, Droplet, Fish as FishIcon, Ship, Palette, Check, PackageOpen, Store } from 'lucide-react';
 import { SHOP_ITEMS } from '../constants';
 import { PlayerState, RodCustomization } from '../types';
 
@@ -8,16 +8,19 @@ interface Props {
   playerState: PlayerState;
   setPlayerState: React.Dispatch<React.SetStateAction<PlayerState>>;
   onClose: () => void;
+  isNearBaitShop: boolean;
 }
 
 const COLORS = ['#ffffff', '#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ffa500'];
 const DECALS = ['none', 'flames', 'waves', 'stars', 'stripes', 'dots'];
 
-export function Shop({ playerState, setPlayerState, onClose }: Props) {
+export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop }: Props) {
   const [activeTab, setActiveTab] = useState<'rods' | 'lures' | 'baits' | 'boats' | 'consumables'>('rods');
   const [customizingRod, setCustomizingRod] = useState<string | null>(null);
 
   const handleBuy = (category: keyof typeof SHOP_ITEMS, item: any) => {
+    if (!isNearBaitShop) return;
+    
     if (category === 'consumables') {
       if (playerState.money >= item.price) {
         setPlayerState(prev => ({
@@ -154,8 +157,8 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
                 ) : (
                   <button 
                     onClick={() => handleBuy(category, item)}
-                    disabled={!canAfford}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${canAfford ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'}`}
+                    disabled={!canAfford || !isNearBaitShop}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${canAfford && isNearBaitShop ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'}`}
                   >
                     Buy
                   </button>
@@ -199,6 +202,18 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
         <TabButton active={activeTab === 'boats'} onClick={() => setActiveTab('boats')} icon={<Ship size={16} />} label="Boats" />
         <TabButton active={activeTab === 'consumables'} onClick={() => setActiveTab('consumables')} icon={<PackageOpen size={16} />} label="Items" />
       </div>
+
+      {!isNearBaitShop && (
+        <div className="bg-orange-600/20 border-b border-orange-500/30 p-3 flex items-center gap-3">
+          <div className="bg-orange-500 p-2 rounded-lg">
+            <Store size={18} className="text-white" />
+          </div>
+          <div>
+            <p className="text-orange-200 text-xs font-bold">OUTSIDE SERVICE AREA</p>
+            <p className="text-orange-200/70 text-[10px]">You must be at a Gas Station (Bait Shop) to purchase items.</p>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-hidden p-4">
         {renderItems(activeTab)}

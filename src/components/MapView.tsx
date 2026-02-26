@@ -32,11 +32,12 @@ const playerIcon = new L.Icon({
 
 interface MapViewProps {
   spots: Array<{ lat: number; lng: number; name: string; type: string }>;
+  onProximityChange?: (proximity: { isNearBaitShop: boolean; isNearTournament: boolean }) => void;
 }
 
-interface WaterFeature {
+interface MapFeature {
   id: number;
-  type: string;
+  type: 'water' | 'waterway' | 'bait_shop' | 'park';
   geometry: [number, number][];
   isPolygon: boolean;
   name?: string;
@@ -56,6 +57,24 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * c;
 }
 
+const baitShopIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const parkIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
 function LocationMarker({ position }: { position: [number, number] | null }) {
   const map = useMap();
   
@@ -72,11 +91,11 @@ function LocationMarker({ position }: { position: [number, number] | null }) {
   );
 }
 
-export function MapView({ spots }: MapViewProps) {
+export function MapView({ spots, onProximityChange }: MapViewProps) {
   const [position, setPosition] = useState<[number, number] | null>(null);
   const [mapType, setMapType] = useState<'normal' | 'satellite'>('normal');
-  const [waterFeatures, setWaterFeatures] = useState<WaterFeature[]>([]);
-  const [isLoadingWater, setIsLoadingWater] = useState(false);
+  const [features, setFeatures] = useState<MapFeature[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -91,12 +110,12 @@ export function MapView({ spots }: MapViewProps) {
     }
   }, []);
 
-  const fetchWaterFeatures = useCallback(async () => {
+  const fetchFeatures = useCallback(async () => {
     if (!position) return;
-    setIsLoadingWater(true);
+    setIsLoading(true);
     try {
       const [lat, lng] = position;
-      const radius = 1000; // Reduced to 1km radius for faster queries
+      const radius = 1500; // 1.5km radius
       const query = `
         [out:json][timeout:15];
         (
@@ -104,6 +123,11 @@ export function MapView({ spots }: MapViewProps) {
           relation["natural"="water"](around:${radius},${lat},${lng});
           way["waterway"](around:${radius},${lat},${lng});
           relation["waterway"](around:${radius},${lat},${lng});
+          node["amenity"="fuel"](around:${radius},${lat},${lng});
+          way["amenity"="fuel"](around:${radius},${lat},${lng});
+          relation["amenity"="fuel"](around:${radius},${lat},${lng});
+          way["leisure"="park"](around:${radius},${lat},${lng});
+          relation["leisure"="park"](around:${radius},${lat},${lng});
         );
         out geom;
       `;
@@ -141,11 +165,22 @@ export function MapView({ spots }: MapViewProps) {
         throw new Error("Invalid JSON from Overpass API");
       }
       
-      const features: WaterFeature[] = [];
+      const newFeatures: MapFeature[] = [];
       if (data && data.elements) {
         data.elements.forEach((el: any) => {
-          if (el.type === 'way' && el.geometry) {
-            const coords: [number, number][] = el.geometry.map((g: any) => [g.lat, g.lon]);
+          let type: MapFeature['type'] = 'water';
+          if (el.tags?.amenity === 'fuel') type = 'bait_shop';
+          else if (el.tags?.leisure === 'park') type = 'park';
+          else if (el.tags?.waterway) type = 'waterway';
+
+          let coords: [number, number][] = [];
+          if (el.type === 'node') {
+            coords = [[el.lat, el.lon]];
+          } else if (el.geometry) {
+            coords = el.geometry.map((g: any) => [g.lat, g.lon]);
+          }
+
+          if (coords.length > 0) {
             const isPolygon = coords.length > 2 && coords[0][0] === coords[coords.length-1][0] && coords[0][1] === coords[coords.length-1][1];
             
             let centerLat = 0, centerLng = 0;
@@ -153,9 +188,9 @@ export function MapView({ spots }: MapViewProps) {
             centerLat /= coords.length;
             centerLng /= coords.length;
             
-            features.push({
+            newFeatures.push({
               id: el.id,
-              type: el.tags?.waterway ? 'waterway' : 'water',
+              type,
               geometry: coords,
               isPolygon,
               name: el.tags?.name,
@@ -164,37 +199,53 @@ export function MapView({ spots }: MapViewProps) {
           }
         });
       }
-      setWaterFeatures(features);
+      setFeatures(newFeatures);
     } catch (err) {
-      console.error("Failed to fetch water features", err);
+      console.error("Failed to fetch features", err);
     } finally {
-      setIsLoadingWater(false);
+      setIsLoading(false);
     }
   }, [position]);
 
-  // Fetch water features once when position is first acquired
   useEffect(() => {
-    if (position && waterFeatures.length === 0 && !isLoadingWater) {
-      fetchWaterFeatures();
+    if (position && features.length === 0 && !isLoading) {
+      fetchFeatures();
     }
-  }, [position]); // Only run when position changes, but guard prevents infinite loops
+  }, [position]);
 
-  const nearestWater = useMemo(() => {
-    if (!position || waterFeatures.length === 0) return null;
-    let nearest = waterFeatures[0];
-    let minDistance = Infinity;
+  const proximity = useMemo(() => {
+    if (!position || features.length === 0) return { isNearBaitShop: false, isNearTournament: false, nearestWater: null };
     
-    waterFeatures.forEach(feature => {
-      // Check distance to center of feature
-      const dist = getDistance(position[0], position[1], feature.center[0], feature.center[1]);
-      if (dist < minDistance) {
-        minDistance = dist;
-        nearest = feature;
+    let isNearBaitShop = false;
+    let isNearTournament = false;
+    let nearestWater = null;
+    let minWaterDist = Infinity;
+
+    features.forEach(f => {
+      const dist = getDistance(position[0], position[1], f.center[0], f.center[1]);
+      
+      if (f.type === 'bait_shop' && dist < 100) isNearBaitShop = true;
+      if (f.type === 'park' && dist < 300) isNearTournament = true;
+      
+      if (f.type === 'water' || f.type === 'waterway') {
+        if (dist < minWaterDist) {
+          minWaterDist = dist;
+          nearestWater = { feature: f, distance: dist };
+        }
       }
     });
-    
-    return { feature: nearest, distance: minDistance };
-  }, [position, waterFeatures]);
+
+    return { isNearBaitShop, isNearTournament, nearestWater };
+  }, [position, features]);
+
+  useEffect(() => {
+    if (onProximityChange) {
+      onProximityChange({
+        isNearBaitShop: proximity.isNearBaitShop,
+        isNearTournament: proximity.isNearTournament
+      });
+    }
+  }, [proximity.isNearBaitShop, proximity.isNearTournament, onProximityChange]);
 
   const center: [number, number] = position || [0, 0];
 
@@ -220,28 +271,46 @@ export function MapView({ spots }: MapViewProps) {
         
         <LocationMarker position={position} />
         
-        {/* Render Overpass Water Features */}
-        {waterFeatures.map(feature => (
-          feature.isPolygon ? (
+        {features.map(f => {
+          if (f.type === 'bait_shop') {
+            return (
+              <Marker key={f.id} position={f.center} icon={baitShopIcon}>
+                <Popup>
+                  <div className="font-bold">Bait Shop (Gas Station)</div>
+                  <div className="text-xs text-gray-500">Shop for lures, rods, and chum here!</div>
+                </Popup>
+              </Marker>
+            );
+          }
+          if (f.type === 'park') {
+            return (
+              <Marker key={f.id} position={f.center} icon={parkIcon}>
+                <Popup>
+                  <div className="font-bold">{f.name || 'Public Park'}</div>
+                  <div className="text-xs text-blue-500 font-bold">Tournament Zone Active!</div>
+                </Popup>
+              </Marker>
+            );
+          }
+          return f.isPolygon ? (
             <Polygon 
-              key={feature.id} 
-              positions={feature.geometry} 
+              key={f.id} 
+              positions={f.geometry} 
               pathOptions={{ className: 'flashing-water' }}
             >
-              <Popup>{feature.name || 'Water Body'}</Popup>
+              <Popup>{f.name || 'Water Body'}</Popup>
             </Polygon>
           ) : (
             <Polyline 
-              key={feature.id} 
-              positions={feature.geometry} 
+              key={f.id} 
+              positions={f.geometry} 
               pathOptions={{ className: 'flashing-water' }}
             >
-              <Popup>{feature.name || 'Waterway'}</Popup>
+              <Popup>{f.name || 'Waterway'}</Popup>
             </Polyline>
-          )
-        ))}
+          );
+        })}
 
-        {/* Render Custom Spots */}
         {spots.map((spot, i) => (
           <Marker key={`spot-${i}`} position={[spot.lat, spot.lng]} icon={customIcon}>
             <Popup>
@@ -251,16 +320,14 @@ export function MapView({ spots }: MapViewProps) {
           </Marker>
         ))}
 
-        {/* Draw Line to Nearest Water */}
-        {position && nearestWater && (
+        {position && proximity.nearestWater && (
           <Polyline 
-            positions={[position, nearestWater.feature.center]} 
+            positions={[position, proximity.nearestWater.feature.center]} 
             pathOptions={{ color: '#f59e0b', dashArray: '5, 10', weight: 3 }} 
           />
         )}
       </MapContainer>
 
-      {/* Map Controls */}
       <div className="absolute bottom-32 right-4 z-[400] flex flex-col gap-2">
         <button 
           onClick={() => setMapType(t => t === 'normal' ? 'satellite' : 'normal')}
@@ -281,19 +348,18 @@ export function MapView({ spots }: MapViewProps) {
           <Crosshair size={24} />
         </button>
         <button 
-          onClick={fetchWaterFeatures}
+          onClick={fetchFeatures}
           className="bg-blue-600 p-3 rounded-full shadow-lg text-white hover:bg-blue-500 relative"
-          title="Scan for Water Nearby"
+          title="Scan Nearby"
         >
-          {isLoadingWater ? <Loader2 size={24} className="animate-spin" /> : <Navigation size={24} />}
+          {isLoading ? <Loader2 size={24} className="animate-spin" /> : <Navigation size={24} />}
         </button>
       </div>
       
-      {/* Nearest Water Indicator */}
-      {nearestWater && (
+      {proximity.nearestWater && (
         <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[400] bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-full border border-white/10 flex items-center gap-2 pointer-events-none">
           <Navigation size={16} className="text-blue-400" />
-          <span className="font-bold">{Math.round(nearestWater.distance)}m</span>
+          <span className="font-bold">{Math.round(proximity.nearestWater.distance)}m</span>
           <span className="text-white/70 text-sm">to nearest water</span>
         </div>
       )}
