@@ -1,4 +1,4 @@
-export interface FishData {
+﻿export interface FishData {
   id: string;
   name: string;
   description: string;
@@ -17,10 +17,24 @@ export interface RodCustomization {
   decal: string;
 }
 
+export interface DailyQuest {
+  date: string;
+  target: number;
+  progress: number;
+  reward: number;
+  complete: boolean;
+}
+
 export interface PlayerState {
   money: number;
   level: number;
   xp: number;
+  streak: number;
+  lastWaterType?: string;
+  dailyRewardLastClaim?: string;
+  dailyQuest: DailyQuest;
+  lifetimeCatches: number;
+  lifetimeWeightKg: number;
   inventory: {
     rods: string[];
     lures: string[];
@@ -37,3 +51,4 @@ export interface PlayerState {
   rodCustomization: Record<string, RodCustomization>;
   licenseExpiry: number;
 }
+
