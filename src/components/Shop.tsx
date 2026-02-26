@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Coins, Anchor, Droplet, Fish as FishIcon, Ship, Palette, Check, PackageOpen, Store } from 'lucide-react';
+import { X, Coins, Anchor, Droplet, Fish as FishIcon, Ship, Palette, Check, PackageOpen, Store, Shield, CreditCard, Clock } from 'lucide-react';
 import { SHOP_ITEMS } from '../constants';
 import { PlayerState, RodCustomization } from '../types';
 
@@ -9,28 +9,82 @@ interface Props {
   setPlayerState: React.Dispatch<React.SetStateAction<PlayerState>>;
   onClose: () => void;
   isNearBaitShop: boolean;
+  initialTab?: 'rods' | 'lures' | 'baits' | 'boats' | 'consumables' | 'license';
 }
 
 const COLORS = ['#ffffff', '#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ffa500'];
 const DECALS = ['none', 'flames', 'waves', 'stars', 'stripes', 'dots'];
 
-export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop }: Props) {
-  const [activeTab, setActiveTab] = useState<'rods' | 'lures' | 'baits' | 'boats' | 'consumables'>('rods');
+export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop, initialTab = 'rods' }: Props) {
+  const [activeTab, setActiveTab] = useState<'rods' | 'lures' | 'baits' | 'boats' | 'consumables' | 'license'>(initialTab);
   const [customizingRod, setCustomizingRod] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleBuyLicense = (days: number, price: number) => {
+    if (playerState.money >= price) {
+      setPlayerState(prev => ({
+        ...prev,
+        money: prev.money - price,
+        licenseExpiry: Math.max(Date.now(), prev.licenseExpiry) + days * 24 * 60 * 60 * 1000
+      }));
+      alert(`License extended by ${days} days!`);
+    } else {
+      alert("Not enough money!");
+    }
+  };
+
+  const handleBuyCoins = async (amount: number, price: number) => {
+    setIsProcessing(true);
+    try {
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          price,
+          successUrl: window.location.origin + '?payment=success',
+          cancelUrl: window.location.origin + '?payment=cancel',
+        }),
+      });
+
+      const session = await response.json();
+      if (session.error) throw new Error(session.error);
+      if (!session.url) throw new Error("No checkout URL returned from server");
+      
+      window.location.href = session.url;
+    } catch (err: any) {
+      console.error(err);
+      alert(`Payment failed: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleBuy = (category: keyof typeof SHOP_ITEMS, item: any) => {
     if (!isNearBaitShop) return;
     
     if (category === 'consumables') {
       if (playerState.money >= item.price) {
-        setPlayerState(prev => ({
-          ...prev,
-          money: prev.money - item.price,
-          inventory: {
-            ...prev.inventory,
-            chum: prev.inventory.chum + 1
+        setPlayerState(prev => {
+          const newState = { ...prev, money: prev.money - item.price };
+          
+          if (item.id === 'energy_drink') {
+            newState.stamina = Math.min(prev.maxStamina, prev.stamina + 50);
+            alert("Energy drink consumed! Restored 50 stamina.");
+          } else if (item.id === 'stamina_boost') {
+            newState.maxStamina = prev.maxStamina + 10;
+            newState.stamina = prev.stamina + 10;
+            alert("Max stamina increased by 10!");
+          } else {
+            newState.inventory = {
+              ...prev.inventory,
+              chum: prev.inventory.chum + 1
+            };
           }
-        }));
+          return newState;
+        });
+      } else {
+        alert("Not enough money!");
       }
       return;
     }
@@ -171,6 +225,80 @@ export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop }: P
     );
   };
 
+  const renderLicense = () => {
+    const isExpired = playerState.licenseExpiry < Date.now();
+    const expiryDate = new Date(playerState.licenseExpiry).toLocaleDateString();
+
+    return (
+      <div className="flex flex-col gap-6 overflow-y-auto pb-20">
+        <div className={`p-6 rounded-2xl border flex flex-col items-center text-center gap-4 ${isExpired ? 'bg-red-500/10 border-red-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+          <div className={`p-4 rounded-full ${isExpired ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>
+            <Shield size={48} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white mb-1">Fishing License</h3>
+            <p className={`text-sm font-bold ${isExpired ? 'text-red-400' : 'text-emerald-400'}`}>
+              {isExpired ? 'EXPIRED' : `ACTIVE UNTIL ${expiryDate}`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <h4 className="text-white/50 text-xs uppercase font-bold tracking-widest px-2">Renew with In-Game Cash</h4>
+          <button 
+            onClick={() => handleBuyLicense(1, 500)}
+            className="bg-zinc-800 border border-white/10 p-4 rounded-xl flex justify-between items-center hover:bg-zinc-700 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Clock className="text-blue-400" size={20} />
+              <div className="text-left">
+                <div className="text-white font-bold">1 Day Extension</div>
+                <div className="text-white/50 text-xs">Standard permit</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-3 py-1 rounded-lg">
+              <Coins size={14} /> 500
+            </div>
+          </button>
+          <button 
+            onClick={() => handleBuyLicense(7, 2500)}
+            className="bg-zinc-800 border border-white/10 p-4 rounded-xl flex justify-between items-center hover:bg-zinc-700 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Clock className="text-purple-400" size={20} />
+              <div className="text-left">
+                <div className="text-white font-bold">7 Day Extension</div>
+                <div className="text-white/50 text-xs">Weekly permit</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-3 py-1 rounded-lg">
+              <Coins size={14} /> 2500
+            </div>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <h4 className="text-white/50 text-xs uppercase font-bold tracking-widest px-2">Premium Currency (Stripe)</h4>
+          <button 
+            onClick={() => handleBuyCoins(5000, 5)}
+            disabled={isProcessing}
+            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 p-4 rounded-xl flex justify-between items-center transition-colors shadow-lg"
+          >
+            <div className="flex items-center gap-3">
+              <CreditCard className="text-white" size={20} />
+              <div className="text-left text-white">
+                <div className="font-bold">Buy 5,000 Coins</div>
+                <div className="text-white/70 text-xs">Instant delivery</div>
+              </div>
+            </div>
+            <div className="text-white font-black text-lg">$5.00</div>
+          </button>
+          <p className="text-[10px] text-white/30 text-center italic">Secure payments powered by Stripe</p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: '100%' }}
@@ -182,10 +310,13 @@ export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop }: P
       <div className="p-4 flex justify-between items-center border-b border-white/10 bg-zinc-900">
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-bold text-white">Tackle Shop</h2>
-          <div className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-3 py-1 rounded-full text-sm">
+          <button 
+            onClick={() => setActiveTab('license')}
+            className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-3 py-1 rounded-full text-sm hover:bg-yellow-400/20 transition-colors"
+          >
             <Coins size={16} />
             {playerState.money}
-          </div>
+          </button>
         </div>
         <button 
           onClick={onClose}
@@ -201,9 +332,10 @@ export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop }: P
         <TabButton active={activeTab === 'baits'} onClick={() => setActiveTab('baits')} icon={<Droplet size={16} />} label="Baits" />
         <TabButton active={activeTab === 'boats'} onClick={() => setActiveTab('boats')} icon={<Ship size={16} />} label="Boats" />
         <TabButton active={activeTab === 'consumables'} onClick={() => setActiveTab('consumables')} icon={<PackageOpen size={16} />} label="Items" />
+        <TabButton active={activeTab === 'license'} onClick={() => setActiveTab('license')} icon={<Shield size={16} />} label="License" />
       </div>
 
-      {!isNearBaitShop && (
+      {!isNearBaitShop && activeTab !== 'license' && (
         <div className="bg-orange-600/20 border-b border-orange-500/30 p-3 flex items-center gap-3">
           <div className="bg-orange-500 p-2 rounded-lg">
             <Store size={18} className="text-white" />
@@ -216,7 +348,7 @@ export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop }: P
       )}
 
       <div className="flex-1 overflow-hidden p-4">
-        {renderItems(activeTab)}
+        {activeTab === 'license' ? renderLicense() : renderItems(activeTab)}
       </div>
 
       <AnimatePresence>

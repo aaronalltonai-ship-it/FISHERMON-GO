@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { X, Trophy, Globe, MapPin, Medal, Target, Coins, Fish } from 'lucide-react';
+import { X, Trophy, Globe, MapPin, Medal, Target, Coins } from 'lucide-react';
 import { FishData } from '../types';
 
 interface Props {
@@ -87,7 +87,7 @@ export function Leaderboard({ fishdex, onClose }: Props) {
                       <img src={fish.image} alt={fish.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: `${fish.color}40` }}>
-                        <Fish size={22} style={{ color: fish.color }} />
+                        <span className="text-2xl" style={{ color: fish.color }}>🐟</span>
                       </div>
                     )}
                   </div>

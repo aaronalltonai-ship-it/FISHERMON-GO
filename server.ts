@@ -16,7 +16,7 @@ async function startServer() {
   // Stripe Checkout Session
   app.post("/api/create-checkout-session", async (req, res) => {
     try {
-      const { priceId, successUrl, cancelUrl } = req.body;
+      const { amount, price, successUrl, cancelUrl } = req.body;
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
@@ -25,9 +25,10 @@ async function startServer() {
             price_data: {
               currency: "usd",
               product_data: {
-                name: "Fishing License (7 Days)",
+                name: `${amount.toLocaleString()} Fishing Coins`,
+                description: "Premium currency for fishing gear and licenses.",
               },
-              unit_amount: 500, // $5.00
+              unit_amount: price * 100, // Price in cents
             },
             quantity: 1,
           },
@@ -37,8 +38,9 @@ async function startServer() {
         cancel_url: cancelUrl,
       });
 
-      res.json({ id: session.id });
+      res.json({ url: session.url });
     } catch (error: any) {
+      console.error("Stripe Error:", error);
       res.status(500).json({ error: error.message });
     }
   });
