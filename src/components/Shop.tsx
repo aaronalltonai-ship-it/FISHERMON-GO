@@ -81,7 +81,7 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
           const customization = playerState.rodCustomization?.[item.id];
 
           return (
-            <div key={item.id} className="bg-zinc-800/50 border border-white/10 rounded-xl p-4 flex flex-col gap-2 relative overflow-hidden">
+            <div key={item.id} className="glass-panel rounded-xl p-4 flex flex-col gap-2 relative overflow-hidden">
               {category === 'rods' && customization && (
                 <div 
                   className="absolute top-0 right-0 w-1 h-full opacity-50" 
@@ -156,12 +156,12 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="absolute inset-0 z-50 bg-zinc-950 flex flex-col"
+      className="absolute inset-0 z-50 bg-[#050a14] flex flex-col"
     >
-      <div className="p-4 flex justify-between items-center border-b border-white/10 bg-zinc-900">
+      <div className="p-4 flex justify-between items-center border-b border-white/10 glass-panel">
         <div className="flex items-center gap-4">
-          <h2 className="text-xl font-bold text-white">Tackle Shop</h2>
-          <div className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-3 py-1 rounded-full text-sm">
+          <h2 className="text-xl font-bold text-white title-font">Tackle Shop</h2>
+          <div className="flex items-center gap-1 text-yellow-300 font-bold bg-yellow-400/10 px-3 py-1 rounded-full text-sm">
             <Coins size={16} />
             {playerState.money}
           </div>
@@ -174,7 +174,7 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
         </button>
       </div>
       
-      <div className="flex p-2 gap-2 bg-zinc-900 border-b border-white/5 overflow-x-auto no-scrollbar shrink-0">
+      <div className="flex p-2 gap-2 glass-panel border-b border-white/5 overflow-x-auto no-scrollbar shrink-0">
         <TabButton active={activeTab === 'rods'} onClick={() => setActiveTab('rods')} icon={<Anchor size={16} />} label="Rods" />
         <TabButton active={activeTab === 'lures'} onClick={() => setActiveTab('lures')} icon={<FishIcon size={16} />} label="Lures" />
         <TabButton active={activeTab === 'baits'} onClick={() => setActiveTab('baits')} icon={<Droplet size={16} />} label="Baits" />
@@ -267,7 +267,7 @@ function TabButton({ active, onClick, icon, label }: { active: boolean, onClick:
   return (
     <button 
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
+      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white/60 hover:text-white'}`}
     >
       {icon}
       {label}

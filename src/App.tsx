@@ -286,7 +286,10 @@ export default function App() {
   };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-zinc-900 font-sans">
+    <div className="relative w-full h-screen overflow-hidden app-shell">
+      <div className="app-backdrop" />
+      <div className="app-grid" />
+      <div className="app-vignette" />
       
       {state === 'MAP' && <MapView spots={customSpots} />}
       
@@ -298,7 +301,7 @@ export default function App() {
           {state !== 'MAP' && (
             <button 
               onClick={() => setState('MAP')}
-              className="bg-black/60 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2 text-white border border-white/10 pointer-events-auto hover:bg-black/80"
+              className="hud-pill px-4 py-2 flex items-center gap-2 text-white pointer-events-auto hover:bg-black/80 transition-colors"
             >
               <ChevronLeft size={16} />
               <span className="text-sm font-medium">Back to Map</span>
@@ -306,16 +309,16 @@ export default function App() {
           )}
           
           {waterType && state !== 'MAP' && (
-            <div className="bg-black/40 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2 text-white border border-white/10 pointer-events-auto">
-              <MapPin size={16} className="text-blue-400" />
+            <div className="hud-pill px-4 py-2 flex items-center gap-2 text-white pointer-events-auto">
+              <MapPin size={16} className="text-cyan-300 hud-icon" />
               <span className="text-sm font-medium capitalize">
                 {waterType} detected
               </span>
             </div>
           )}
           
-          <div className="bg-black/40 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2 text-yellow-400 border border-white/10 pointer-events-auto font-bold">
-            <Coins size={16} />
+          <div className="hud-pill px-4 py-2 flex items-center gap-2 text-yellow-300 pointer-events-auto font-bold">
+            <Coins size={16} className="hud-icon" />
             {playerState.money}
           </div>
         </div>
@@ -325,14 +328,14 @@ export default function App() {
             <motion.div 
               animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }}
               transition={{ duration: 2, repeat: Infinity }}
-              className="bg-purple-600/40 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-2 text-purple-200 border border-purple-400/30 shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+              className="hud-pill px-3 py-1.5 flex items-center gap-2 text-purple-200 border border-purple-400/30 shadow-[0_0_20px_rgba(168,85,247,0.4)]"
             >
               <Sparkles size={14} className="text-purple-300" />
               <span className="text-[10px] font-black uppercase tracking-widest">Magic Active</span>
             </motion.div>
           )}
           
-          <div className="bg-black/40 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-2 text-white/80 border border-white/10">
+          <div className="hud-pill px-3 py-1.5 flex items-center gap-2 text-white/80">
             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: currentRodCustomization?.color || '#fff' }} />
             <span className="text-[10px] font-bold uppercase tracking-wider">
               {SHOP_ITEMS.rods.find(r => r.id === playerState.equipped.rod)?.name}
@@ -341,25 +344,25 @@ export default function App() {
 
           <button 
             onClick={() => setShowMapSpots(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <MapIcon size={20} />
           </button>
           <button 
             onClick={() => setShowFishdex(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <PackageOpen size={20} />
           </button>
           <button 
             onClick={() => setShowShop(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <Store size={20} />
           </button>
           <button 
             onClick={() => setShowLeaderboard(true)}
-            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+            className="hud-button p-3 text-white transition-colors"
           >
             <Trophy size={20} />
           </button>
@@ -378,7 +381,7 @@ export default function App() {
           >
             <button 
               onClick={() => setState('CAMERA')}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded-full px-8 py-4 font-bold text-lg shadow-lg flex items-center gap-3"
+              className="cta-primary text-white rounded-full px-8 py-4 font-bold text-lg flex items-center gap-3 tracking-wide"
             >
               <CameraIcon size={24} />
               Open Camera to Fish
@@ -396,7 +399,7 @@ export default function App() {
           >
             <button 
               onClick={handleScan}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded-full px-8 py-4 font-bold text-lg shadow-lg flex items-center gap-3"
+              className="cta-primary text-white rounded-full px-8 py-4 font-bold text-lg flex items-center gap-3 tracking-wide"
             >
               <Crosshair size={24} />
               Scan Water
@@ -457,7 +460,7 @@ export default function App() {
           >
             <button 
               onClick={handleCast}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-full px-10 py-5 font-bold text-xl shadow-[0_0_30px_rgba(5,150,105,0.5)] flex items-center gap-3"
+              className="cta-secondary text-white rounded-full px-10 py-5 font-bold text-xl flex items-center gap-3 tracking-widest"
             >
               <Crosshair size={28} />
               CAST LINE
@@ -499,7 +502,7 @@ export default function App() {
             />
             <button 
               onClick={handleHook}
-              className="bg-red-600 text-white rounded-full px-12 py-6 font-black text-3xl shadow-[0_0_50px_rgba(220,38,38,0.8)] animate-pulse"
+              className="bg-rose-600 text-white rounded-full px-12 py-6 font-black text-3xl shadow-[0_0_50px_rgba(255,90,122,0.6)] animate-pulse"
             >
               HOOK IT!
             </button>
@@ -522,10 +525,10 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 bg-black/80 backdrop-blur-md"
           >
-            <div className="bg-zinc-900 rounded-3xl p-6 w-full max-w-sm border border-white/10 relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-32 opacity-20" style={{ backgroundColor: currentFish.color }} />
+            <div className="glass-panel rounded-3xl p-6 w-full max-w-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-32 opacity-30" style={{ backgroundColor: currentFish.color }} />
               
-              <h2 className="text-3xl font-black text-white text-center mb-2 relative z-10">CAUGHT!</h2>
+              <h2 className="text-4xl font-black text-white text-center mb-2 relative z-10 title-font">CAUGHT!</h2>
               
               <div className="w-48 h-48 mx-auto bg-black/50 rounded-2xl border border-white/10 flex items-center justify-center relative z-10 mb-6 overflow-hidden">
                 {currentFish.video ? (

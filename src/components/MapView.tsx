@@ -235,7 +235,7 @@ export function MapView({ spots }: MapViewProps) {
       <div className="absolute bottom-32 right-4 z-[400] flex flex-col gap-2">
         <button 
           onClick={() => setMapType(t => t === 'normal' ? 'satellite' : 'normal')}
-          className="bg-white p-3 rounded-full shadow-lg text-black hover:bg-gray-100"
+          className="hud-button p-3"
           title="Toggle Map Type"
         >
           <Layers size={24} />
@@ -246,24 +246,24 @@ export function MapView({ spots }: MapViewProps) {
               setPosition([...position] as [number, number]);
             }
           }}
-          className="bg-white p-3 rounded-full shadow-lg text-black hover:bg-gray-100"
+          className="hud-button p-3"
           title="Center on Me"
         >
           <Crosshair size={24} />
         </button>
         <button 
           onClick={fetchWaterFeatures}
-          className="bg-blue-600 p-3 rounded-full shadow-lg text-white hover:bg-blue-500 relative"
+          className="hud-button p-3 relative"
           title="Scan for Water Nearby"
         >
-          {isLoadingWater ? <Loader2 size={24} className="animate-spin" /> : <Navigation size={24} />}
+          {isLoadingWater ? <Loader2 size={24} className="animate-spin" /> : <Navigation size={24} className="text-cyan-300" />}
         </button>
       </div>
       
       {/* Nearest Water Indicator */}
       {nearestWater && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[400] bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-full border border-white/10 flex items-center gap-2 pointer-events-none">
-          <Navigation size={16} className="text-blue-400" />
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[400] glass-panel text-white px-4 py-2 rounded-full flex items-center gap-2 pointer-events-none">
+          <Navigation size={16} className="text-cyan-300" />
           <span className="font-bold">{Math.round(nearestWater.distance)}m</span>
           <span className="text-white/70 text-sm">to nearest water</span>
         </div>

@@ -32,12 +32,12 @@ export function Leaderboard({ fishdex, onClose }: Props) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="absolute inset-0 z-50 bg-zinc-950 flex flex-col"
+      className="absolute inset-0 z-50 bg-[#050a14] flex flex-col"
     >
-      <div className="p-4 flex justify-between items-center border-b border-white/10 bg-zinc-900">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <Trophy size={24} className="text-yellow-400" />
-          Rankings
+      <div className="p-4 flex justify-between items-center border-b border-white/10 glass-panel">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2 title-font">
+          <Trophy size={24} className="text-yellow-300" />
+          Captain Rankings
         </h2>
         <button 
           onClick={onClose}
@@ -47,17 +47,17 @@ export function Leaderboard({ fishdex, onClose }: Props) {
         </button>
       </div>
 
-      <div className="flex p-2 gap-2 bg-zinc-900 border-b border-white/5 shrink-0">
+      <div className="flex p-2 gap-2 glass-panel border-b border-white/5 shrink-0">
         <button 
           onClick={() => setActiveTab('local')}
-          className={`flex-1 flex justify-center items-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'local' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+          className={`flex-1 flex justify-center items-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'local' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white/60'}`}
         >
           <MapPin size={16} />
           My Top Catches
         </button>
         <button 
           onClick={() => setActiveTab('global')}
-          className={`flex-1 flex justify-center items-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'global' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+          className={`flex-1 flex justify-center items-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'global' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white/60'}`}
         >
           <Globe size={16} />
           Global
@@ -73,14 +73,14 @@ export function Leaderboard({ fishdex, onClose }: Props) {
           ) : (
             <div className="flex flex-col gap-3">
               {localTop.map((fish, i) => (
-                <div key={fish.id} className="bg-zinc-800/50 border border-white/10 rounded-xl p-3 flex items-center gap-4">
+                <div key={fish.id} className="glass-panel rounded-xl p-3 flex items-center gap-4">
                   <div className="w-8 text-center font-bold text-white/50">#{i + 1}</div>
                   <div className="w-12 h-12 bg-black/50 rounded-lg overflow-hidden flex-shrink-0">
                     {fish.image ? (
                       <img src={fish.image} alt={fish.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: `${fish.color}40` }}>
-                        <span className="text-2xl" style={{ color: fish.color }}>🐟</span>
+                        <span className="text-2xl" style={{ color: fish.color }}>Fish</span>
                       </div>
                     )}
                   </div>
@@ -101,7 +101,7 @@ export function Leaderboard({ fishdex, onClose }: Props) {
         ) : (
           <div className="flex flex-col gap-3">
             {globalMock.map((entry, i) => (
-              <div key={i} className="bg-zinc-800/50 border border-white/10 rounded-xl p-3 flex items-center gap-4">
+              <div key={i} className="glass-panel rounded-xl p-3 flex items-center gap-4">
                 <div className="w-8 flex justify-center">
                   {i === 0 ? <Medal size={20} className="text-yellow-400" /> :
                    i === 1 ? <Medal size={20} className="text-gray-400" /> :
