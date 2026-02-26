@@ -18,9 +18,14 @@ export interface RodCustomization {
 }
 
 export interface PlayerState {
+  id: string;
+  email: string;
+  name: string;
   money: number;
   level: number;
   xp: number;
+  hasPassport: boolean;
+  location?: { lat: number; lng: number };
   inventory: {
     rods: string[];
     lures: string[];

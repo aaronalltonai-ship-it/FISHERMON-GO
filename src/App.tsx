@@ -5,8 +5,12 @@ import { Shop } from './components/Shop';
 import { Leaderboard } from './components/Leaderboard';
 import { MapSpots } from './components/MapSpots';
 import { MapView } from './components/MapView';
-import { detectWater, generateFishStats, generateFishImage, generateFishVideo, pollVideoOperation, getDownloadUrl, generatePresetVideos } from './lib/gemini';
-import { MapPin, Fish, Loader2, Crosshair, PackageOpen, X, Camera as CameraIcon, Store, Trophy, Coins, Map as MapIcon, ChevronLeft, Video, Play, Sparkles, Shield } from 'lucide-react';
+import { PlayerProfile } from './components/PlayerProfile';
+import { GlobalTicker } from './components/GlobalTicker';
+import { OnboardingHelper } from './components/OnboardingHelper';
+import { MusicManager } from './components/MusicManager';
+import { detectWater, generateFishStats, generateMonsterStats, generateFishImage, generateFishVideo, pollVideoOperation, getDownloadUrl, generatePresetVideos } from './lib/gemini';
+import { MapPin, Fish, Loader2, Crosshair, PackageOpen, X, Camera as CameraIcon, Store, Trophy, Coins, Map as MapIcon, ChevronLeft, Video, Play, Sparkles, Shield, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FishData, PlayerState } from './types';
 import { SHOP_ITEMS } from './constants';
@@ -24,15 +28,19 @@ declare global {
 type GameState = 'MAP' | 'CAMERA' | 'SCANNING' | 'READY' | 'WAITING' | 'BITING' | 'REELING' | 'CAUGHT' | 'BROKEN' | 'ESCAPED';
 
 const DEFAULT_PLAYER_STATE: PlayerState = {
-  money: 500, // Start with some money for bait
+  id: Math.random().toString(36).substr(2, 9),
+  email: 'aaronalltonai@gmail.com',
+  name: 'Aaron',
+  money: 500,
   level: 1,
   xp: 0,
+  hasPassport: false,
   inventory: {
     rods: ['rod_basic'],
     lures: ['lure_none'],
     baits: ['bait_bread'],
     boats: ['boat_none'],
-    chum: 2 // Start with some chum
+    chum: 2
   },
   equipped: {
     rod: 'rod_basic',
@@ -43,7 +51,7 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   rodCustomization: {
     'rod_basic': { color: '#ffffff', decal: 'none' }
   },
-  licenseExpiry: Date.now() + 24 * 60 * 60 * 1000, // 1 day from now
+  licenseExpiry: Date.now() + 24 * 60 * 60 * 1000,
   stamina: 100,
   maxStamina: 100,
   lastStaminaRegen: Date.now()
@@ -55,6 +63,11 @@ export default function App() {
   const [currentFish, setCurrentFish] = useState<FishData | null>(null);
   const [fishdex, setFishdex] = useState<FishData[]>([]);
   const [playerState, setPlayerState] = useState<PlayerState>(DEFAULT_PLAYER_STATE);
+  const [otherPlayers, setOtherPlayers] = useState<any[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<any | null>(null);
+  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [tickerEvents, setTickerEvents] = useState<any[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [customSpots, setCustomSpots] = useState<Array<{ lat: number; lng: number; name: string; type: string }>>([]);
   
   const [showFishdex, setShowFishdex] = useState(false);
@@ -65,9 +78,11 @@ export default function App() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [isGeneratingPresets, setIsGeneratingPresets] = useState(false);
+  const [isMonsterEncounter, setIsMonsterEncounter] = useState(false);
+  const [orientation, setOrientation] = useState({ alpha: 0, beta: 0, gamma: 0 });
   const [presetVideo, setPresetVideo] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<string>('');
-  const [proximity, setProximity] = useState({ isNearBaitShop: false, isNearTournament: false, isNearRanger: false });
+  const [proximity, setProximity] = useState({ isNearBaitShop: false, isNearTournament: false, isNearRanger: false, locationType: 'rural' as 'urban' | 'rural' });
   const [castPower, setCastPower] = useState(0);
   const [isCasting, setIsCasting] = useState(false);
   
@@ -123,6 +138,53 @@ export default function App() {
   }, []);
   
   useEffect(() => {
+    // Handle million coins for specific user
+    if (playerState.email === 'aaronalltonai@gmail.com' && playerState.money < 1000000) {
+      setPlayerState(prev => ({ ...prev, money: 1000000 }));
+    }
+
+    // WebSocket Connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(`${protocol}//${window.location.host}`);
+    
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: 'join',
+        player: {
+          id: playerState.id,
+          name: playerState.name,
+          level: playerState.level,
+          hasPassport: playerState.hasPassport,
+          location: playerState.location
+        }
+      }));
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'presence') {
+        setOtherPlayers(data.players.filter((p: any) => p.id !== playerState.id));
+      }
+      if (data.type === 'catch_ticker') {
+        setTickerEvents(prev => [...prev, { ...data, id: Math.random().toString(36).substr(2, 9) }]);
+      }
+    };
+
+    setWs(socket);
+    return () => socket.close();
+  }, [playerState.id, playerState.name, playerState.email]);
+
+  // Update location in WebSocket
+  useEffect(() => {
+    if (ws && ws.readyState === WebSocket.OPEN && playerState.location) {
+      ws.send(JSON.stringify({
+        type: 'update_location',
+        location: playerState.location
+      }));
+    }
+  }, [playerState.location, ws]);
+
+  useEffect(() => {
     const savedDex = localStorage.getItem('fishdex');
     if (savedDex) {
       try {
@@ -140,6 +202,11 @@ export default function App() {
       try {
         setCustomSpots(JSON.parse(savedSpots));
       } catch (e) {}
+    }
+
+    const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
+    if (!hasSeenOnboarding) {
+      setShowOnboarding(true);
     }
 
     // Handle Stripe payment success
@@ -255,6 +322,38 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    const handleMotion = (event: DeviceMotionEvent) => {
+      if (state === 'CAMERA' && !isCasting) {
+        const acc = event.accelerationIncludingGravity;
+        if (acc && acc.z && acc.z > 15) { // Threshold for a forward swing
+          handleCast();
+        }
+      }
+    };
+
+    if (window.DeviceMotionEvent) {
+      window.addEventListener('devicemotion', handleMotion);
+    }
+
+    const handleOrientation = (event: DeviceOrientationEvent) => {
+      setOrientation({
+        alpha: event.alpha || 0,
+        beta: event.beta || 0,
+        gamma: event.gamma || 0
+      });
+    };
+
+    if (window.DeviceOrientationEvent) {
+      window.addEventListener('deviceorientation', handleOrientation);
+    }
+
+    return () => {
+      window.removeEventListener('devicemotion', handleMotion);
+      window.removeEventListener('deviceorientation', handleOrientation);
+    };
+  }, [state, isCasting]);
+
   const handleCast = () => {
     if (playerState.licenseExpiry < Date.now()) {
       alert("Your fishing license has expired! You must renew it to fish.");
@@ -336,6 +435,13 @@ export default function App() {
       if (navigator.vibrate) {
         navigator.vibrate(200); // Sharp hook set vibration
       }
+      
+      // 10% chance of monster in big water bodies
+      const isBigWater = waterType === 'lake' || waterType === 'ocean';
+      const monsterChance = isBigWater ? 0.1 : 0.01;
+      const isMonster = Math.random() < monsterChance;
+      
+      setIsMonsterEncounter(isMonster);
       setState('REELING');
     }
   };
@@ -348,12 +454,17 @@ export default function App() {
       const baitItem = SHOP_ITEMS.baits.find(b => b.id === playerState.equipped.bait);
       const boatItem = SHOP_ITEMS.boats.find(b => b.id === playerState.equipped.boat);
       
-      const stats = await generateFishStats(
-        waterType || 'mysterious water',
-        lureItem?.name || 'No Lure',
-        baitItem?.name || 'Bread',
-        boatItem?.name || 'Shore'
-      );
+      let stats;
+      if (isMonsterEncounter) {
+        stats = await generateMonsterStats(waterType || 'mysterious water');
+      } else {
+        stats = await generateFishStats(
+          waterType || 'mysterious water',
+          lureItem?.name || 'No Lure',
+          baitItem?.name || 'Bread',
+          boatItem?.name || 'Shore'
+        );
+      }
       
       const fishWithId = { ...stats, id: Date.now().toString(), caughtAt: Date.now() };
       
@@ -363,6 +474,16 @@ export default function App() {
       }
       
       setCurrentFish(fishWithId);
+      
+      // Emit catch event for global ticker
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'catch',
+          playerName: playerState.name,
+          fishName: stats.name,
+          rarity: stats.rarity
+        }));
+      }
       
       // Calculate XP based on price/rarity
       const xpGained = Math.floor(fishWithId.price / 5) + 10;
@@ -463,7 +584,14 @@ export default function App() {
   return (
     <div className="relative w-full h-screen overflow-hidden bg-zinc-900 font-sans">
       
-      {state === 'MAP' && <MapView spots={customSpots} onProximityChange={setProximity} />}
+      {state === 'MAP' && (
+        <MapView 
+          spots={customSpots} 
+          players={otherPlayers}
+          onProximityChange={setProximity} 
+          onPlayerClick={setSelectedPlayer}
+        />
+      )}
       
       {state !== 'MAP' && <Camera ref={cameraRef} />}
       
@@ -601,6 +729,12 @@ export default function App() {
             <Store size={20} />
           </button>
           <button 
+            onClick={() => setSelectedPlayer(playerState)}
+            className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
+          >
+            <User size={20} />
+          </button>
+          <button 
             onClick={() => setShowLeaderboard(true)}
             className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
           >
@@ -608,6 +742,25 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showOnboarding && (
+          <OnboardingHelper 
+            onComplete={() => {
+              setShowOnboarding(false);
+              localStorage.setItem('hasSeenOnboarding', 'true');
+            }} 
+          />
+        )}
+      </AnimatePresence>
+
+      <GlobalTicker events={tickerEvents} />
+
+      <MusicManager 
+        gameState={state} 
+        locationType={proximity.locationType} 
+        isMonster={isMonsterEncounter} 
+      />
 
       {/* Main UI Overlay */}
       <AnimatePresence mode="wait">
@@ -760,13 +913,68 @@ export default function App() {
           </motion.div>
         )}
 
+        {state === 'BITING' && (
+          <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+            <motion.div
+              animate={{ 
+                scale: [1, 1.2, 1],
+                y: [0, -20, 0],
+                opacity: [0.4, 0.8, 0.4]
+              }}
+              transition={{ duration: 0.5, repeat: Infinity }}
+              className="relative"
+            >
+              <div className="w-32 h-32 bg-blue-500/20 blur-3xl rounded-full absolute -inset-8" />
+              <Fish size={80} className="text-blue-400/40 rotate-90" />
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 bg-white/10 backdrop-blur-md px-4 py-1 rounded-full border border-white/20">
+                <span className="text-white font-black text-sm animate-pulse">STRIKE! HOOK IT!</span>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {state === 'REELING' && (
-          <TensionReeling 
-            rodMultiplier={getRodMultiplier()}
-            onCatch={handleCatch}
-            onBreak={() => setState('BROKEN')}
-            onEscape={() => setState('ESCAPED')}
-          />
+          <div className="absolute inset-0 z-20">
+            {/* AR Fish struggling in the background */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+              <motion.div
+                animate={{ 
+                  x: [
+                    (orientation.gamma * 2) + (Math.random() * -50), 
+                    (orientation.gamma * 2) + (Math.random() * 50)
+                  ],
+                  y: [
+                    (orientation.beta * 2) + (Math.random() * -50), 
+                    (orientation.beta * 2) + (Math.random() * 50)
+                  ],
+                  rotate: [0, 360],
+                  scale: [0.8, 1.2]
+                }}
+                transition={{ duration: 2, repeat: Infinity, repeatType: 'reverse' }}
+              >
+                <Fish size={120} className={isMonsterEncounter ? 'text-red-500' : 'text-blue-400'} />
+              </motion.div>
+            </div>
+            
+            <TensionReeling 
+              rodMultiplier={getRodMultiplier()}
+              isMonster={isMonsterEncounter}
+              onCatch={handleCatch}
+              onBreak={() => {
+                // Monsters break poles!
+                if (isMonsterEncounter) {
+                  setPlayerState(prev => ({
+                    ...prev,
+                    equipped: { ...prev.equipped, rod: 'rod_basic' },
+                    inventory: { ...prev.inventory, rods: prev.inventory.rods.filter(r => r === 'rod_basic') }
+                  }));
+                  alert("THE MONSTER SNAPPED YOUR POLE! It's gone forever...");
+                }
+                setState('BROKEN');
+              }}
+              onEscape={() => setState('ESCAPED')}
+            />
+          </div>
         )}
 
         {state === 'CAUGHT' && currentFish && (
@@ -1004,6 +1212,16 @@ export default function App() {
             onClose={() => setShowLeaderboard(false)} 
           />
         )}
+
+        <AnimatePresence>
+          {selectedPlayer && (
+            <PlayerProfile 
+              player={selectedPlayer} 
+              isMe={selectedPlayer.id === playerState.id}
+              onClose={() => setSelectedPlayer(null)} 
+            />
+          )}
+        </AnimatePresence>
       </AnimatePresence>
 
       <AnimatePresence>

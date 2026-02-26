@@ -75,6 +75,9 @@ export function Shop({ playerState, setPlayerState, onClose, isNearBaitShop, ini
             newState.maxStamina = prev.maxStamina + 10;
             newState.stamina = prev.stamina + 10;
             alert("Max stamina increased by 10!");
+          } else if (item.id === 'passport') {
+            newState.hasPassport = true;
+            alert("World Passport acquired! You can now interact with global players and access exclusive spots.");
           } else {
             newState.inventory = {
               ...prev.inventory,

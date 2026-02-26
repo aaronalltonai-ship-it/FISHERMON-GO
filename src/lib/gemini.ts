@@ -56,6 +56,30 @@ export async function generateFishStats(waterType: string, lure: string, bait: s
   return JSON.parse(response.text || '{}');
 }
 
+export async function generateMonsterStats(waterType: string) {
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Generate a MYTHICAL, GIGANTIC sea monster or lake monster that might be found in a ${waterType}. This is a "Boss" fish. It should be terrifying and huge. Assign it the rarity 'MONSTER'.`,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING, description: "The name of the monster (e.g., 'The Kraken', 'Nessie', 'The Deep Lurker')." },
+          description: { type: Type.STRING, description: "A terrifying description." },
+          rarity: { type: Type.STRING, description: "Must be 'MONSTER'." },
+          weightKg: { type: Type.NUMBER, description: "Massive weight (e.g., 5000-50000 kg)." },
+          lengthCm: { type: Type.NUMBER, description: "Massive length (e.g., 1000-5000 cm)." },
+          color: { type: Type.STRING, description: "A hex color code." },
+          price: { type: Type.NUMBER, description: "Value: 100,000 - 1,000,000 coins." }
+        },
+        required: ["name", "description", "rarity", "weightKg", "lengthCm", "color", "price"]
+      }
+    }
+  });
+  return JSON.parse(response.text || '{}');
+}
+
 export async function generateFishImage(fishName: string, waterType: string, color: string) {
   try {
     const response = await ai.models.generateContent({

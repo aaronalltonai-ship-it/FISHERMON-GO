@@ -29,7 +29,8 @@ export const SHOP_ITEMS = {
     { id: 'chum_bucket', name: 'Chum Bucket', price: 500, desc: 'Throw in water to instantly attract fish and reduce wait time.' },
     { id: 'premium_chum', name: 'Premium Chum', price: 2500, desc: 'Attracts bigger fish instantly.' },
     { id: 'energy_drink', name: 'Energy Drink', price: 1000, desc: 'Instantly restores 50 stamina.' },
-    { id: 'stamina_boost', name: 'Stamina Boost', price: 5000, desc: 'Increases max stamina by 10 permanently.' }
+    { id: 'stamina_boost', name: 'Stamina Boost', price: 5000, desc: 'Increases max stamina by 10 permanently.' },
+    { id: 'passport', name: 'World Passport', price: 100000, desc: 'Allows travel to exclusive international fishing spots and interaction with global players.' }
   ]
 };
 

@@ -33,7 +33,9 @@ const playerIcon = new L.Icon({
 
 interface MapViewProps {
   spots: Array<{ lat: number; lng: number; name: string; type: string }>;
-  onProximityChange?: (proximity: { isNearBaitShop: boolean; isNearTournament: boolean; isNearRanger: boolean }) => void;
+  players?: any[];
+  onProximityChange?: (proximity: { isNearBaitShop: boolean; isNearTournament: boolean; isNearRanger: boolean; locationType: 'urban' | 'rural' }) => void;
+  onPlayerClick?: (player: any) => void;
 }
 
 interface MapFeature {
@@ -102,6 +104,20 @@ const rangerIcon = L.divIcon({
   iconAnchor: [14, 14],
 });
 
+const monsterShadowIcon = L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="relative">
+      <div className="w-32 h-16 bg-black/20 blur-xl rounded-[100%] animate-[monster-swim_10s_infinite_linear]" />
+      <div className="absolute inset-0 flex items-center justify-center opacity-10">
+        <Fish size={40} className="text-black rotate-90" />
+      </div>
+    </div>
+  ),
+  className: 'monster-shadow-container',
+  iconSize: [128, 64],
+  iconAnchor: [64, 32],
+});
+
 function LocationMarker({ position }: { position: [number, number] | null }) {
   const map = useMap();
   
@@ -118,11 +134,28 @@ function LocationMarker({ position }: { position: [number, number] | null }) {
   );
 }
 
-export function MapView({ spots, onProximityChange }: MapViewProps) {
+const otherPlayerIcon = (name: string, hasPassport: boolean) => L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="relative flex flex-col items-center">
+      <div className={`p-1 rounded-full border-2 ${hasPassport ? 'bg-purple-600 border-yellow-400' : 'bg-blue-600 border-white'} shadow-lg`}>
+        <User size={16} className="text-white" />
+      </div>
+      <div className="absolute -top-6 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap font-bold border border-white/10">
+        {name}
+      </div>
+    </div>
+  ),
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+export function MapView({ spots, players = [], onProximityChange, onPlayerClick }: MapViewProps) {
   const [position, setPosition] = useState<[number, number] | null>(null);
   const [mapType, setMapType] = useState<'normal' | 'satellite'>('normal');
   const [features, setFeatures] = useState<MapFeature[]>([]);
   const [rangers, setRangers] = useState<Array<{ id: number; pos: [number, number]; target: [number, number] }>>([]);
+  const [monsters, setMonsters] = useState<Array<{ id: number; pos: [number, number]; target: [number, number] }>>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -237,6 +270,15 @@ export function MapView({ spots, onProximityChange }: MapViewProps) {
         target: [p.center[0] + (Math.random() - 0.5) * 0.005, p.center[1] + (Math.random() - 0.5) * 0.005] as [number, number]
       }));
       setRangers(newRangers);
+
+      // Spawn monsters in large water bodies
+      const waterFeatures = newFeatures.filter(f => f.type === 'water' && f.isPolygon);
+      const newMonsters = waterFeatures.map((w, i) => ({
+        id: i,
+        pos: [...w.center] as [number, number],
+        target: [w.center[0] + (Math.random() - 0.5) * 0.01, w.center[1] + (Math.random() - 0.5) * 0.01] as [number, number]
+      }));
+      setMonsters(newMonsters);
     } catch (err) {
       console.error("Failed to fetch features", err);
     } finally {
@@ -279,6 +321,33 @@ export function MapView({ spots, onProximityChange }: MapViewProps) {
     return () => clearInterval(interval);
   }, [rangers.length]);
 
+  useEffect(() => {
+    if (monsters.length === 0) return;
+    
+    const interval = setInterval(() => {
+      setMonsters(prev => prev.map(m => {
+        const dx = m.target[0] - m.pos[0];
+        const dy = m.target[1] - m.pos[1];
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if (dist < 0.0001) {
+          return {
+            ...m,
+            target: [m.pos[0] + (Math.random() - 0.5) * 0.01, m.pos[1] + (Math.random() - 0.5) * 0.01]
+          };
+        }
+        
+        const speed = 0.00002; // Slower than rangers
+        return {
+          ...m,
+          pos: [m.pos[0] + (dx/dist) * speed, m.pos[1] + (dy/dist) * speed]
+        };
+      }));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [monsters.length]);
+
   const proximity = useMemo(() => {
     if (!position || features.length === 0) return { isNearBaitShop: false, isNearTournament: false, isNearRanger: false, nearestWater: null };
     
@@ -287,9 +356,13 @@ export function MapView({ spots, onProximityChange }: MapViewProps) {
     let isNearRanger = false;
     let nearestWater = null;
     let minWaterDist = Infinity;
+    let urbanFeatureCount = 0;
 
     features.forEach(f => {
       const dist = getDistance(position[0], position[1], f.center[0], f.center[1]);
+      
+      if (f.type === 'bait_shop') urbanFeatureCount++;
+      if (f.type === 'park') urbanFeatureCount++;
       
       if (f.type === 'bait_shop' && dist < 100) isNearBaitShop = true;
       if (f.type === 'park' && dist < 300) isNearTournament = true;
@@ -307,7 +380,9 @@ export function MapView({ spots, onProximityChange }: MapViewProps) {
       if (dist < 50) isNearRanger = true;
     });
 
-    return { isNearBaitShop, isNearTournament, isNearRanger, nearestWater };
+    const locationType: 'urban' | 'rural' = urbanFeatureCount > 3 ? 'urban' : 'rural';
+
+    return { isNearBaitShop, isNearTournament, isNearRanger, nearestWater, locationType };
   }, [position, features, rangers]);
 
   useEffect(() => {
@@ -315,10 +390,11 @@ export function MapView({ spots, onProximityChange }: MapViewProps) {
       onProximityChange({
         isNearBaitShop: proximity.isNearBaitShop,
         isNearTournament: proximity.isNearTournament,
-        isNearRanger: proximity.isNearRanger
+        isNearRanger: proximity.isNearRanger,
+        locationType: proximity.locationType
       });
     }
-  }, [proximity.isNearBaitShop, proximity.isNearTournament, proximity.isNearRanger, onProximityChange]);
+  }, [proximity.isNearBaitShop, proximity.isNearTournament, proximity.isNearRanger, proximity.locationType, onProximityChange]);
 
   const center: [number, number] = position || [0, 0];
 
@@ -343,6 +419,31 @@ export function MapView({ spots, onProximityChange }: MapViewProps) {
         )}
         
         <LocationMarker position={position} />
+        
+        {players.map(p => (
+          p.location && (
+            <Marker 
+              key={p.id} 
+              position={[p.location.lat, p.location.lng]} 
+              icon={otherPlayerIcon(p.name, p.hasPassport)}
+              eventHandlers={{
+                click: () => onPlayerClick?.(p)
+              }}
+            >
+              <Popup>
+                <div className="text-center">
+                  <div className="font-bold">{p.name}</div>
+                  <div className="text-xs text-gray-500">Level {p.level}</div>
+                  {p.hasPassport && (
+                    <div className="mt-1 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">
+                      World Traveler
+                    </div>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          )
+        ))}
         
         {features.map(f => {
           if (f.type === 'bait_shop') {
@@ -391,6 +492,10 @@ export function MapView({ spots, onProximityChange }: MapViewProps) {
               <div className="text-xs">Patrolling for fishing licenses.</div>
             </Popup>
           </Marker>
+        ))}
+
+        {monsters.map(m => (
+          <Marker key={`monster-${m.id}`} position={m.pos} icon={monsterShadowIcon} interactive={false} />
         ))}
 
         {spots.map((spot, i) => (
