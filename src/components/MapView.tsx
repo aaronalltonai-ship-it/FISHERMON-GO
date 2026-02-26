@@ -96,9 +96,9 @@ export function MapView({ spots }: MapViewProps) {
     setIsLoadingWater(true);
     try {
       const [lat, lng] = position;
-      const radius = 2000; // 2km radius
+      const radius = 1000; // Reduced to 1km radius for faster queries
       const query = `
-        [out:json][timeout:25];
+        [out:json][timeout:15];
         (
           way["natural"="water"](around:${radius},${lat},${lng});
           relation["natural"="water"](around:${radius},${lat},${lng});
@@ -108,33 +108,62 @@ export function MapView({ spots }: MapViewProps) {
         out geom;
       `;
       
-      const response = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: query
-      });
-      const data = await response.json();
+      const endpoints = [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass.osm.ch/api/interpreter'
+      ];
+
+      let response;
+      let lastError;
+
+      for (const endpoint of endpoints) {
+        try {
+          response = await fetch(endpoint, {
+            method: 'POST',
+            body: query
+          });
+          if (response.ok) break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      
+      if (!response || !response.ok) {
+        throw new Error(`Overpass API error: ${response?.statusText || lastError}`);
+      }
+      
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Invalid JSON from Overpass API");
+      }
       
       const features: WaterFeature[] = [];
-      data.elements.forEach((el: any) => {
-        if (el.type === 'way' && el.geometry) {
-          const coords: [number, number][] = el.geometry.map((g: any) => [g.lat, g.lon]);
-          const isPolygon = coords.length > 2 && coords[0][0] === coords[coords.length-1][0] && coords[0][1] === coords[coords.length-1][1];
-          
-          let centerLat = 0, centerLng = 0;
-          coords.forEach(c => { centerLat += c[0]; centerLng += c[1]; });
-          centerLat /= coords.length;
-          centerLng /= coords.length;
-          
-          features.push({
-            id: el.id,
-            type: el.tags?.waterway ? 'waterway' : 'water',
-            geometry: coords,
-            isPolygon,
-            name: el.tags?.name,
-            center: [centerLat, centerLng]
-          });
-        }
-      });
+      if (data && data.elements) {
+        data.elements.forEach((el: any) => {
+          if (el.type === 'way' && el.geometry) {
+            const coords: [number, number][] = el.geometry.map((g: any) => [g.lat, g.lon]);
+            const isPolygon = coords.length > 2 && coords[0][0] === coords[coords.length-1][0] && coords[0][1] === coords[coords.length-1][1];
+            
+            let centerLat = 0, centerLng = 0;
+            coords.forEach(c => { centerLat += c[0]; centerLng += c[1]; });
+            centerLat /= coords.length;
+            centerLng /= coords.length;
+            
+            features.push({
+              id: el.id,
+              type: el.tags?.waterway ? 'waterway' : 'water',
+              geometry: coords,
+              isPolygon,
+              name: el.tags?.name,
+              center: [centerLat, centerLng]
+            });
+          }
+        });
+      }
       setWaterFeatures(features);
     } catch (err) {
       console.error("Failed to fetch water features", err);
@@ -235,7 +264,7 @@ export function MapView({ spots }: MapViewProps) {
       <div className="absolute bottom-32 right-4 z-[400] flex flex-col gap-2">
         <button 
           onClick={() => setMapType(t => t === 'normal' ? 'satellite' : 'normal')}
-          className="hud-button p-3"
+          className="bg-white p-3 rounded-full shadow-lg text-black hover:bg-gray-100"
           title="Toggle Map Type"
         >
           <Layers size={24} />
@@ -246,24 +275,24 @@ export function MapView({ spots }: MapViewProps) {
               setPosition([...position] as [number, number]);
             }
           }}
-          className="hud-button p-3"
+          className="bg-white p-3 rounded-full shadow-lg text-black hover:bg-gray-100"
           title="Center on Me"
         >
           <Crosshair size={24} />
         </button>
         <button 
           onClick={fetchWaterFeatures}
-          className="hud-button p-3 relative"
+          className="bg-blue-600 p-3 rounded-full shadow-lg text-white hover:bg-blue-500 relative"
           title="Scan for Water Nearby"
         >
-          {isLoadingWater ? <Loader2 size={24} className="animate-spin" /> : <Navigation size={24} className="text-cyan-300" />}
+          {isLoadingWater ? <Loader2 size={24} className="animate-spin" /> : <Navigation size={24} />}
         </button>
       </div>
       
       {/* Nearest Water Indicator */}
       {nearestWater && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[400] glass-panel text-white px-4 py-2 rounded-full flex items-center gap-2 pointer-events-none">
-          <Navigation size={16} className="text-cyan-300" />
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[400] bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-full border border-white/10 flex items-center gap-2 pointer-events-none">
+          <Navigation size={16} className="text-blue-400" />
           <span className="font-bold">{Math.round(nearestWater.distance)}m</span>
           <span className="text-white/70 text-sm">to nearest water</span>
         </div>
