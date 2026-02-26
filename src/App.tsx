@@ -25,6 +25,10 @@ type GameState = 'MAP' | 'CAMERA' | 'SCANNING' | 'READY' | 'WAITING' | 'BITING' 
 
 const DEFAULT_PLAYER_STATE: PlayerState = {
   money: 0,
+  level: 1,
+  xp: 0,
+  streak: 0,
+  lastWaterType: undefined,
   inventory: {
     rods: ['rod_basic'],
     lures: ['lure_none'],
@@ -40,6 +44,33 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   rodCustomization: {
     'rod_basic': { color: '#ffffff', decal: 'none' }
   }
+};
+
+const normalizePlayerState = (saved: Partial<PlayerState>): PlayerState => {
+  return {
+    ...DEFAULT_PLAYER_STATE,
+    ...saved,
+    inventory: {
+      ...DEFAULT_PLAYER_STATE.inventory,
+      ...(saved.inventory || {})
+    },
+    equipped: {
+      ...DEFAULT_PLAYER_STATE.equipped,
+      ...(saved.equipped || {})
+    },
+    rodCustomization: {
+      ...DEFAULT_PLAYER_STATE.rodCustomization,
+      ...(saved.rodCustomization || {})
+    }
+  };
+};
+
+const getNextLevelXp = (level: number) => Math.round(120 + level * 80);
+
+const getXpForFish = (fish: FishData) => {
+  const base = Math.max(10, Math.round(fish.price / 10));
+  const rarityBonus = fish.rarity === 'Legendary' ? 80 : fish.rarity === 'Epic' ? 40 : fish.rarity === 'Rare' ? 20 : 0;
+  return base + rarityBonus;
 };
 
 export default function App() {
@@ -72,7 +103,7 @@ export default function App() {
     const savedPlayer = localStorage.getItem('playerState');
     if (savedPlayer) {
       try {
-        setPlayerState(JSON.parse(savedPlayer));
+        setPlayerState(normalizePlayerState(JSON.parse(savedPlayer)));
       } catch (e) {}
     }
     const savedSpots = localStorage.getItem('customSpots');
@@ -111,6 +142,7 @@ export default function App() {
       const result = await detectWater(base64);
       if (result.hasWater) {
         setWaterType(result.waterType);
+        setPlayerState(prev => ({ ...prev, lastWaterType: result.waterType }));
         
         // Add to custom spots if we have location
         if (navigator.geolocation) {
@@ -163,6 +195,15 @@ export default function App() {
     }
   };
 
+  const handleInstantCast = () => {
+    if (!playerState.lastWaterType) return;
+    setWaterType(playerState.lastWaterType);
+    setState('READY');
+    if (!presetVideo) {
+      handleGeneratePresets(playerState.lastWaterType);
+    }
+  };
+
   const handleCast = () => {
     setState('WAITING');
     // Magic bait reduces wait time
@@ -209,6 +250,24 @@ export default function App() {
       
       const fishWithId = { ...stats, id: Date.now().toString(), caughtAt: Date.now() };
       setCurrentFish(fishWithId);
+      setPlayerState(prev => {
+        const streak = prev.streak + 1;
+        let xp = prev.xp + getXpForFish(fishWithId) + streak * 2;
+        let level = prev.level;
+        let next = getNextLevelXp(level);
+        while (xp >= next) {
+          xp -= next;
+          level += 1;
+          next = getNextLevelXp(level);
+        }
+        return {
+          ...prev,
+          level,
+          xp,
+          streak,
+          lastWaterType: waterType || prev.lastWaterType
+        };
+      });
       
       generateFishImage(stats.name, waterType || 'mysterious water', stats.color).then(img => {
         if (img) {
@@ -245,6 +304,8 @@ export default function App() {
 
   const isMagicBait = playerState.equipped.bait === 'bait_magic';
   const currentRodCustomization = playerState.rodCustomization[playerState.equipped.rod];
+  const nextLevelXp = getNextLevelXp(playerState.level);
+  const xpProgress = Math.min(1, playerState.xp / nextLevelXp);
 
   const handleGenerateVideo = async () => {
     if (!currentFish) return;
@@ -321,6 +382,21 @@ export default function App() {
             <Coins size={16} className="hud-icon" />
             {playerState.money}
           </div>
+
+          <div className="hud-pill px-4 py-2 pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 text-[10px] uppercase tracking-widest text-white/70">
+              <span>Level {playerState.level}</span>
+              <span>{playerState.xp}/{nextLevelXp} XP</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-cyan-400" style={{ width: `${xpProgress * 100}%` }} />
+            </div>
+          </div>
+
+          <div className="hud-pill px-4 py-2 flex items-center gap-2 text-emerald-200 pointer-events-auto font-bold">
+            <Fish size={14} className="text-emerald-300" />
+            Streak {playerState.streak}
+          </div>
         </div>
         
         <div className="flex flex-col gap-2 pointer-events-auto">
@@ -379,13 +455,24 @@ export default function App() {
             exit={{ opacity: 0, y: 20 }}
             className="absolute bottom-12 left-0 right-0 flex justify-center z-10"
           >
-            <button 
-              onClick={() => setState('CAMERA')}
-              className="cta-primary text-white rounded-full px-8 py-4 font-bold text-lg flex items-center gap-3 tracking-wide"
-            >
-              <CameraIcon size={24} />
-              Open Camera to Fish
-            </button>
+            <div className="flex flex-col md:flex-row gap-3 items-center">
+              <button 
+                onClick={() => setState('CAMERA')}
+                className="cta-primary text-white rounded-full px-8 py-4 font-bold text-lg flex items-center gap-3 tracking-wide"
+              >
+                <CameraIcon size={24} />
+                Open Camera to Fish
+              </button>
+              {playerState.lastWaterType && (
+                <button 
+                  onClick={handleInstantCast}
+                  className="cta-secondary text-emerald-200 rounded-full px-6 py-4 font-bold text-sm flex items-center gap-2 tracking-widest uppercase"
+                >
+                  <Play size={16} />
+                  Instant Cast ({playerState.lastWaterType})
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
 
@@ -513,8 +600,14 @@ export default function App() {
           <TensionReeling 
             rodMultiplier={getRodMultiplier()}
             onCatch={handleCatch}
-            onBreak={() => setState('BROKEN')}
-            onEscape={() => setState('ESCAPED')}
+            onBreak={() => {
+              setPlayerState(prev => ({ ...prev, streak: 0 }));
+              setState('BROKEN');
+            }}
+            onEscape={() => {
+              setPlayerState(prev => ({ ...prev, streak: 0 }));
+              setState('ESCAPED');
+            }}
           />
         )}
 

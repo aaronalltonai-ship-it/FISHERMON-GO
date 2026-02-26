@@ -19,6 +19,10 @@ export interface RodCustomization {
 
 export interface PlayerState {
   money: number;
+  level: number;
+  xp: number;
+  streak: number;
+  lastWaterType?: string;
   inventory: {
     rods: string[];
     lures: string[];
