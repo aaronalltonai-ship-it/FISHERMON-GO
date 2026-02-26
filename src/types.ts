@@ -23,6 +23,14 @@ export interface PlayerState {
   xp: number;
   streak: number;
   lastWaterType?: string;
+  dailyRewardLastClaim?: string;
+  dailyQuest: {
+    date: string;
+    target: number;
+    progress: number;
+    reward: number;
+    complete: boolean;
+  };
   inventory: {
     rods: string[];
     lures: string[];

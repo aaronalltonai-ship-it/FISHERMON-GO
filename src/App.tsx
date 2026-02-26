@@ -29,6 +29,14 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   xp: 0,
   streak: 0,
   lastWaterType: undefined,
+  dailyRewardLastClaim: undefined,
+  dailyQuest: {
+    date: '',
+    target: 3,
+    progress: 0,
+    reward: 250,
+    complete: false
+  },
   inventory: {
     rods: ['rod_basic'],
     lures: ['lure_none'],
@@ -46,8 +54,32 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
   }
 };
 
-const normalizePlayerState = (saved: Partial<PlayerState>): PlayerState => {
+const getTodayKey = () => new Date().toISOString().slice(0, 10);
+
+const buildDailyQuest = () => {
+  const target = Math.floor(Math.random() * 3) + 3; // 3-5 fish
+  const reward = target * 150;
   return {
+    date: getTodayKey(),
+    target,
+    progress: 0,
+    reward,
+    complete: false
+  };
+};
+
+const ensureDailyQuest = (state: PlayerState): PlayerState => {
+  if (!state.dailyQuest || state.dailyQuest.date !== getTodayKey()) {
+    return {
+      ...state,
+      dailyQuest: buildDailyQuest()
+    };
+  }
+  return state;
+};
+
+const normalizePlayerState = (saved: Partial<PlayerState>): PlayerState => {
+  const merged = {
     ...DEFAULT_PLAYER_STATE,
     ...saved,
     inventory: {
@@ -62,7 +94,8 @@ const normalizePlayerState = (saved: Partial<PlayerState>): PlayerState => {
       ...DEFAULT_PLAYER_STATE.rodCustomization,
       ...(saved.rodCustomization || {})
     }
-  };
+  } as PlayerState;
+  return ensureDailyQuest(merged);
 };
 
 const getNextLevelXp = (level: number) => Math.round(120 + level * 80);
@@ -117,6 +150,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('playerState', JSON.stringify(playerState));
   }, [playerState]);
+
+  useEffect(() => {
+    setPlayerState(prev => ensureDailyQuest(prev));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('customSpots', JSON.stringify(customSpots));
@@ -195,6 +232,18 @@ export default function App() {
     }
   };
 
+  const canClaimDaily = playerState.dailyRewardLastClaim !== getTodayKey();
+
+  const handleClaimDaily = () => {
+    if (!canClaimDaily) return;
+    const reward = 300 + playerState.level * 20;
+    setPlayerState(prev => ({
+      ...prev,
+      money: prev.money + reward,
+      dailyRewardLastClaim: getTodayKey()
+    }));
+  };
+
   const handleInstantCast = () => {
     if (!playerState.lastWaterType) return;
     setWaterType(playerState.lastWaterType);
@@ -260,12 +309,29 @@ export default function App() {
           level += 1;
           next = getNextLevelXp(level);
         }
+        const quest = ensureDailyQuest(prev).dailyQuest;
+        let questProgress = quest.progress;
+        let questComplete = quest.complete;
+        let questReward = 0;
+        if (!questComplete) {
+          questProgress = Math.min(quest.target, quest.progress + 1);
+          if (questProgress >= quest.target) {
+            questComplete = true;
+            questReward = quest.reward;
+          }
+        }
         return {
           ...prev,
           level,
           xp,
           streak,
-          lastWaterType: waterType || prev.lastWaterType
+          lastWaterType: waterType || prev.lastWaterType,
+          money: prev.money + questReward,
+          dailyQuest: {
+            ...quest,
+            progress: questProgress,
+            complete: questComplete
+          }
         };
       });
       
@@ -397,6 +463,29 @@ export default function App() {
             <Fish size={14} className="text-emerald-300" />
             Streak {playerState.streak}
           </div>
+
+          <div className="glass-panel px-4 py-2 pointer-events-auto text-white/80 text-xs">
+            <div className="flex items-center justify-between gap-4">
+              <span className="uppercase tracking-widest text-[10px] text-cyan-200">Daily Quest</span>
+              <span className="text-emerald-200 font-bold">{playerState.dailyQuest.progress}/{playerState.dailyQuest.target}</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-emerald-400"
+                style={{ width: `${Math.min(1, playerState.dailyQuest.progress / playerState.dailyQuest.target) * 100}%` }}
+              />
+            </div>
+            <div className="mt-1 text-[10px] text-white/50">
+              Reward: {playerState.dailyQuest.reward} coins {playerState.dailyQuest.complete ? '(claimed)' : ''}
+            </div>
+          </div>
+
+          <button
+            onClick={handleClaimDaily}
+            className={`hud-pill px-4 py-2 text-xs font-bold uppercase tracking-widest pointer-events-auto ${canClaimDaily ? 'text-amber-200 border-amber-300/30' : 'text-white/40 border-white/10'} `}
+          >
+            {canClaimDaily ? 'Claim Daily Reward' : 'Daily Reward Claimed'}
+          </button>
         </div>
         
         <div className="flex flex-col gap-2 pointer-events-auto">
