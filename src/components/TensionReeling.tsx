@@ -17,11 +17,24 @@ export function TensionReeling({ rodMultiplier, onCatch, onBreak, onEscape }: Pr
   const tensionRef = useRef(tension);
   const distanceRef = useRef(distance);
   const isReelingRef = useRef(isReeling);
+  const lastVibrateRef = useRef(0);
   
   useEffect(() => {
     tensionRef.current = tension;
     distanceRef.current = distance;
     isReelingRef.current = isReeling;
+
+    // Haptic feedback
+    const now = Date.now();
+    if (now - lastVibrateRef.current > 150) {
+      if (tension > 85 && navigator.vibrate) {
+        navigator.vibrate(60);
+        lastVibrateRef.current = now;
+      } else if (isReeling && navigator.vibrate) {
+        navigator.vibrate(30);
+        lastVibrateRef.current = now;
+      }
+    }
   }, [tension, distance, isReeling]);
 
   useEffect(() => {

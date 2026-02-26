@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
-import { X, Coins, Anchor, Droplet, Fish as FishIcon, Ship } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { X, Coins, Anchor, Droplet, Fish as FishIcon, Ship, Palette, Check } from 'lucide-react';
 import { SHOP_ITEMS } from '../constants';
-import { PlayerState } from '../types';
+import { PlayerState, RodCustomization } from '../types';
 
 interface Props {
   playerState: PlayerState;
@@ -10,19 +10,38 @@ interface Props {
   onClose: () => void;
 }
 
+const COLORS = ['#ffffff', '#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ffa500'];
+const DECALS = ['none', 'flames', 'waves', 'stars', 'stripes', 'dots'];
+
 export function Shop({ playerState, setPlayerState, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<'rods' | 'lures' | 'baits' | 'boats'>('rods');
+  const [customizingRod, setCustomizingRod] = useState<string | null>(null);
 
   const handleBuy = (category: keyof typeof SHOP_ITEMS, item: any) => {
     if (playerState.money >= item.price && !playerState.inventory[category].includes(item.id)) {
-      setPlayerState(prev => ({
-        ...prev,
-        money: prev.money - item.price,
-        inventory: {
-          ...prev.inventory,
-          [category]: [...prev.inventory[category], item.id]
+      setPlayerState(prev => {
+        const newState = {
+          ...prev,
+          money: prev.money - item.price,
+          inventory: {
+            ...prev.inventory,
+            [category]: [...prev.inventory[category], item.id]
+          }
+        };
+        
+        if (category === 'rods') {
+          newState.rodCustomization = {
+            ...prev.rodCustomization,
+            [item.id]: { color: '#ffffff', decal: 'none' }
+          };
         }
-      }));
+        
+        return newState;
+      });
+      
+      if (category === 'rods') {
+        setCustomizingRod(item.id);
+      }
     }
   };
 
@@ -38,6 +57,17 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
     }));
   };
 
+  const saveCustomization = (rodId: string, color: string, decal: string) => {
+    setPlayerState(prev => ({
+      ...prev,
+      rodCustomization: {
+        ...prev.rodCustomization,
+        [rodId]: { color, decal }
+      }
+    }));
+    setCustomizingRod(null);
+  };
+
   const renderItems = (category: keyof typeof SHOP_ITEMS) => {
     const items = SHOP_ITEMS[category];
     const equipKey = category.slice(0, -1) as keyof PlayerState['equipped'];
@@ -48,12 +78,30 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
           const isOwned = playerState.inventory[category].includes(item.id);
           const isEquipped = playerState.equipped[equipKey] === item.id;
           const canAfford = playerState.money >= item.price;
+          const customization = playerState.rodCustomization?.[item.id];
 
           return (
-            <div key={item.id} className="bg-zinc-800/50 border border-white/10 rounded-xl p-4 flex flex-col gap-2">
+            <div key={item.id} className="bg-zinc-800/50 border border-white/10 rounded-xl p-4 flex flex-col gap-2 relative overflow-hidden">
+              {category === 'rods' && customization && (
+                <div 
+                  className="absolute top-0 right-0 w-1 h-full opacity-50" 
+                  style={{ backgroundColor: customization.color }}
+                />
+              )}
+              
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="text-white font-bold">{item.name}</h3>
+                  <h3 className="text-white font-bold flex items-center gap-2">
+                    {item.name}
+                    {category === 'rods' && isOwned && (
+                      <button 
+                        onClick={() => setCustomizingRod(item.id)}
+                        className="p-1 text-white/40 hover:text-white transition-colors"
+                      >
+                        <Palette size={14} />
+                      </button>
+                    )}
+                  </h3>
                   <p className="text-white/50 text-xs">{item.desc}</p>
                 </div>
                 {!isOwned && (
@@ -64,7 +112,16 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
                 )}
               </div>
               
-              <div className="mt-2 flex justify-end">
+              <div className="mt-2 flex justify-end gap-2">
+                {isOwned && category === 'rods' && (
+                  <button 
+                    onClick={() => setCustomizingRod(item.id)}
+                    className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg text-xs font-bold transition-colors border border-white/5"
+                  >
+                    Customize
+                  </button>
+                )}
+                
                 {isEquipped ? (
                   <button disabled className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-bold border border-blue-500/30">
                     Equipped
@@ -126,6 +183,81 @@ export function Shop({ playerState, setPlayerState, onClose }: Props) {
 
       <div className="flex-1 overflow-hidden p-4">
         {renderItems(activeTab)}
+      </div>
+
+      <AnimatePresence>
+        {customizingRod && (
+          <RodCustomizer 
+            rodId={customizingRod}
+            initialCustomization={playerState.rodCustomization[customizingRod]}
+            onSave={(color, decal) => saveCustomization(customizingRod, color, decal)}
+            onClose={() => setCustomizingRod(null)}
+          />
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+function RodCustomizer({ rodId, initialCustomization, onSave, onClose }: { 
+  rodId: string, 
+  initialCustomization: RodCustomization, 
+  onSave: (color: string, decal: string) => void,
+  onClose: () => void 
+}) {
+  const [color, setColor] = useState(initialCustomization.color);
+  const [decal, setDecal] = useState(initialCustomization.decal);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="absolute inset-0 z-[60] bg-zinc-950/90 backdrop-blur-md flex items-center justify-center p-6"
+    >
+      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-white font-bold text-lg">Customize Rod</h3>
+          <button onClick={onClose} className="p-1 text-white/40 hover:text-white"><X size={20} /></button>
+        </div>
+
+        <div className="mb-6">
+          <label className="text-white/50 text-xs uppercase font-bold tracking-wider mb-3 block">Rod Color</label>
+          <div className="grid grid-cols-4 gap-2">
+            {COLORS.map(c => (
+              <button 
+                key={c}
+                onClick={() => setColor(c)}
+                className={`w-full aspect-square rounded-full border-2 transition-all ${color === c ? 'border-white scale-110' : 'border-transparent opacity-60'}`}
+                style={{ backgroundColor: c }}
+              >
+                {color === c && <Check size={16} className="mx-auto text-black drop-shadow-md" />}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <label className="text-white/50 text-xs uppercase font-bold tracking-wider mb-3 block">Decal Style</label>
+          <div className="grid grid-cols-3 gap-2">
+            {DECALS.map(d => (
+              <button 
+                key={d}
+                onClick={() => setDecal(d)}
+                className={`py-2 px-3 rounded-xl border text-xs font-bold capitalize transition-all ${decal === d ? 'bg-white text-black border-white' : 'bg-white/5 text-white/50 border-white/10'}`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button 
+          onClick={() => onSave(color, decal)}
+          className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold shadow-lg transition-all"
+        >
+          Save Customization
+        </button>
       </div>
     </motion.div>
   );

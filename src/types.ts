@@ -8,7 +8,13 @@ export interface FishData {
   color: string;
   price: number;
   image?: string;
+  video?: string;
   caughtAt: number;
+}
+
+export interface RodCustomization {
+  color: string;
+  decal: string;
 }
 
 export interface PlayerState {
@@ -25,4 +31,5 @@ export interface PlayerState {
     bait: string;
     boat: string;
   };
+  rodCustomization: Record<string, RodCustomization>;
 }

@@ -5,11 +5,21 @@ import { Shop } from './components/Shop';
 import { Leaderboard } from './components/Leaderboard';
 import { MapSpots } from './components/MapSpots';
 import { MapView } from './components/MapView';
-import { detectWater, generateFishStats, generateFishImage } from './lib/gemini';
-import { MapPin, Fish, Loader2, Crosshair, PackageOpen, X, Camera as CameraIcon, Store, Trophy, Coins, Map as MapIcon, ChevronLeft } from 'lucide-react';
+import { detectWater, generateFishStats, generateFishImage, generateFishVideo, pollVideoOperation, getDownloadUrl, generatePresetVideos } from './lib/gemini';
+import { MapPin, Fish, Loader2, Crosshair, PackageOpen, X, Camera as CameraIcon, Store, Trophy, Coins, Map as MapIcon, ChevronLeft, Video, Play, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FishData, PlayerState } from './types';
 import { SHOP_ITEMS } from './constants';
+import { FishVisual } from './components/FishVisual';
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
 
 type GameState = 'MAP' | 'CAMERA' | 'SCANNING' | 'READY' | 'WAITING' | 'BITING' | 'REELING' | 'CAUGHT' | 'BROKEN' | 'ESCAPED';
 
@@ -26,6 +36,9 @@ const DEFAULT_PLAYER_STATE: PlayerState = {
     lure: 'lure_none',
     bait: 'bait_bread',
     boat: 'boat_none'
+  },
+  rodCustomization: {
+    'rod_basic': { color: '#ffffff', decal: 'none' }
   }
 };
 
@@ -42,6 +55,10 @@ export default function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showMapSpots, setShowMapSpots] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [isGeneratingPresets, setIsGeneratingPresets] = useState(false);
+  const [presetVideo, setPresetVideo] = useState<string | null>(null);
+  const [videoStatus, setVideoStatus] = useState<string>('');
   
   const cameraRef = useRef<CameraRef>(null);
   
@@ -89,6 +106,7 @@ export default function App() {
       return;
     }
     
+    setState('SCANNING');
     try {
       const result = await detectWater(base64);
       if (result.hasWater) {
@@ -108,6 +126,11 @@ export default function App() {
         }
         
         setState('READY');
+
+        // Start generating preset videos if not already done
+        if (!presetVideo) {
+          handleGeneratePresets(result.waterType);
+        }
       } else {
         alert("No water detected! Point your camera at a lake, river, puddle, or even a glass of water.");
         setState('CAMERA');
@@ -116,6 +139,27 @@ export default function App() {
       console.error(err);
       alert("Error analyzing image.");
       setState('CAMERA');
+    }
+  };
+
+  const handleGeneratePresets = async (type: string) => {
+    try {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) return; 
+
+      setIsGeneratingPresets(true);
+      const operation = await generatePresetVideos(type);
+      const finishedOp = await pollVideoOperation(operation);
+      const downloadLink = finishedOp.response?.generatedVideos?.[0]?.video?.uri;
+      
+      if (downloadLink) {
+        const videoUrl = await getDownloadUrl(downloadLink);
+        setPresetVideo(videoUrl);
+      }
+    } catch (err) {
+      console.error("Preset generation failed:", err);
+    } finally {
+      setIsGeneratingPresets(false);
     }
   };
 
@@ -199,6 +243,48 @@ export default function App() {
     return rod?.multiplier || 1;
   };
 
+  const isMagicBait = playerState.equipped.bait === 'bait_magic';
+  const currentRodCustomization = playerState.rodCustomization[playerState.equipped.rod];
+
+  const handleGenerateVideo = async () => {
+    if (!currentFish) return;
+    
+    try {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await window.aistudio.openSelectKey();
+        // Proceeding after key selection
+      }
+
+      setIsGeneratingVideo(true);
+      setVideoStatus('Initiating video generation...');
+      
+      const operation = await generateFishVideo(currentFish.name, waterType || 'water', currentFish.color);
+      setVideoStatus('Generating video (this may take a few minutes)...');
+      
+      const finishedOp = await pollVideoOperation(operation);
+      const downloadLink = finishedOp.response?.generatedVideos?.[0]?.video?.uri;
+      
+      if (downloadLink) {
+        setVideoStatus('Downloading video...');
+        const videoUrl = await getDownloadUrl(downloadLink);
+        const completeFish = { ...currentFish, video: videoUrl };
+        setCurrentFish(completeFish);
+        
+        // Update in fishdex if already saved
+        const newDex = fishdex.map(f => f.id === currentFish.id ? completeFish : f);
+        setFishdex(newDex);
+        localStorage.setItem('fishdex', JSON.stringify(newDex));
+      }
+    } catch (err) {
+      console.error("Video generation failed:", err);
+      alert("Video generation failed. Please ensure you have a valid API key and try again.");
+    } finally {
+      setIsGeneratingVideo(false);
+      setVideoStatus('');
+    }
+  };
+
   return (
     <div className="relative w-full h-screen overflow-hidden bg-zinc-900 font-sans">
       
@@ -235,6 +321,24 @@ export default function App() {
         </div>
         
         <div className="flex flex-col gap-2 pointer-events-auto">
+          {isMagicBait && (
+            <motion.div 
+              animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="bg-purple-600/40 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-2 text-purple-200 border border-purple-400/30 shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+            >
+              <Sparkles size={14} className="text-purple-300" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Magic Active</span>
+            </motion.div>
+          )}
+          
+          <div className="bg-black/40 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-2 text-white/80 border border-white/10">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: currentRodCustomization?.color || '#fff' }} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">
+              {SHOP_ITEMS.rods.find(r => r.id === playerState.equipped.rod)?.name}
+            </span>
+          </div>
+
           <button 
             onClick={() => setShowMapSpots(true)}
             className="bg-black/40 backdrop-blur-md rounded-full p-3 text-white border border-white/10 hover:bg-black/60 transition-colors"
@@ -298,6 +402,36 @@ export default function App() {
               Scan Water
             </button>
           </motion.div>
+        )}
+
+        {state !== 'MAP' && (
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+            {/* Fish Finder Overlay */}
+            {(state === 'READY' || state === 'WAITING' || state === 'BITING') && presetVideo && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.6 }}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <video 
+                  src={presetVideo} 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline 
+                  className="w-full h-full object-cover mix-blend-screen opacity-40"
+                  style={{ filter: 'blur(2px) brightness(1.2) contrast(1.2) hue-rotate(180deg)' }}
+                />
+              </motion.div>
+            )}
+            
+            {isGeneratingPresets && (
+              <div className="absolute top-24 right-4 bg-black/40 backdrop-blur-md rounded-lg p-2 border border-white/10 flex items-center gap-2">
+                <Loader2 size={12} className="animate-spin text-blue-400" />
+                <span className="text-[10px] text-white/70">Scanning for fish activity...</span>
+              </div>
+            )}
+          </div>
         )}
 
         {state === 'SCANNING' && (
@@ -394,7 +528,17 @@ export default function App() {
               <h2 className="text-3xl font-black text-white text-center mb-2 relative z-10">CAUGHT!</h2>
               
               <div className="w-48 h-48 mx-auto bg-black/50 rounded-2xl border border-white/10 flex items-center justify-center relative z-10 mb-6 overflow-hidden">
-                {currentFish.image ? (
+                {currentFish.video ? (
+                  <video 
+                    src={currentFish.video} 
+                    autoPlay 
+                    loop 
+                    muted 
+                    playsInline 
+                    className="w-full h-full object-cover mix-blend-screen"
+                    style={{ filter: 'contrast(1.2) brightness(1.1)' }}
+                  />
+                ) : currentFish.image ? (
                   <img src={currentFish.image} alt={currentFish.name} className="w-full h-full object-cover" />
                 ) : isGeneratingImage ? (
                   <div className="flex flex-col items-center text-white/50">
@@ -402,7 +546,14 @@ export default function App() {
                     <span className="text-xs">Developing photo...</span>
                   </div>
                 ) : (
-                  <Fish size={64} style={{ color: currentFish.color }} />
+                  <FishVisual rarity={currentFish.rarity} color={currentFish.color} size={80} />
+                )}
+                
+                {isGeneratingVideo && (
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-4 text-center">
+                    <Loader2 className="animate-spin text-blue-400 mb-2" size={32} />
+                    <span className="text-[10px] text-white/80">{videoStatus}</span>
+                  </div>
                 )}
               </div>
               
@@ -413,7 +564,7 @@ export default function App() {
                 <h3 className="text-2xl font-bold text-white mb-2">{currentFish.name}</h3>
                 <p className="text-white/70 text-sm mb-4">{currentFish.description}</p>
                 
-                <div className="flex justify-center gap-4 text-white/60 text-sm mb-6">
+                <div className="flex justify-center gap-4 text-white/60 text-sm mb-4">
                   <div className="bg-black/30 px-3 py-2 rounded-lg">
                     <span className="block text-xs uppercase opacity-70">Weight</span>
                     <span className="font-mono text-white">{currentFish.weightKg} kg</span>
@@ -423,6 +574,15 @@ export default function App() {
                     <span className="font-mono text-white">{currentFish.lengthCm} cm</span>
                   </div>
                 </div>
+
+                {!currentFish.video && !isGeneratingVideo && (
+                  <button 
+                    onClick={handleGenerateVideo}
+                    className="w-full py-2 mb-4 bg-blue-600/20 text-blue-400 border border-blue-600/30 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-blue-600/30 transition-colors"
+                  >
+                    <Video size={14} /> Generate AR Video
+                  </button>
+                )}
                 
                 <div className="flex gap-2">
                   <button 
@@ -504,14 +664,29 @@ export default function App() {
                   {fishdex.map((fish) => (
                     <div key={fish.id} className="bg-zinc-900 rounded-2xl p-3 border border-white/5 flex flex-col items-center text-center relative group">
                       <div className="w-full aspect-square bg-black/50 rounded-xl mb-3 overflow-hidden flex items-center justify-center relative">
-                        {fish.image ? (
+                        {fish.video ? (
+                          <video 
+                            src={fish.video} 
+                            autoPlay 
+                            loop 
+                            muted 
+                            playsInline 
+                            className="w-full h-full object-cover mix-blend-screen"
+                            style={{ filter: 'contrast(1.2) brightness(1.1)' }}
+                          />
+                        ) : fish.image ? (
                           <img src={fish.image} alt={fish.name} className="w-full h-full object-cover" />
                         ) : (
-                          <Fish size={32} style={{ color: fish.color }} />
+                          <FishVisual rarity={fish.rarity} color={fish.color} size={40} />
                         )}
                         <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ backgroundColor: `${fish.color}40`, color: fish.color }}>
                           {fish.rarity}
                         </div>
+                        {fish.video && (
+                          <div className="absolute bottom-2 left-2 bg-blue-500/80 text-white p-1 rounded-md">
+                            <Video size={10} />
+                          </div>
+                        )}
                       </div>
                       <h4 className="text-white font-bold text-sm mb-1 line-clamp-1">{fish.name}</h4>
                       <div className="flex gap-2 text-[10px] text-white/50 font-mono mb-2">

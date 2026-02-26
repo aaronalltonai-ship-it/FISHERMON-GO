@@ -79,6 +79,23 @@ export async function generateFishImage(fishName: string, waterType: string, col
   return null;
 }
 
+export async function generatePresetVideos(waterType: string) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API Key not found");
+
+  const operation = await ai.models.generateVideos({
+    model: 'veo-3.1-fast-generate-preview',
+    prompt: `A school of realistic fish swimming underwater in ${waterType}. Clear water, cinematic lighting, realistic movements. Pure white background for easy background removal. The fish should be swimming across the frame.`,
+    config: {
+      numberOfVideos: 1,
+      resolution: '720p',
+      aspectRatio: '16:9'
+    }
+  });
+
+  return operation;
+}
+
 export async function findNearbyFishingSpots(lat: number, lng: number) {
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -100,4 +117,42 @@ export async function findNearbyFishingSpots(lat: number, lng: number) {
   const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
   
   return { text, chunks };
+}
+
+export async function generateFishVideo(fishName: string, waterType: string, color: string) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API Key not found");
+
+  const operation = await ai.models.generateVideos({
+    model: 'veo-3.1-fast-generate-preview',
+    prompt: `A high-quality video of a real ${fishName} swimming in ${waterType}. The fish has ${color} scales. Cinematic lighting, clear water, realistic movements. The fish should be the central subject. Pure white background for easy background removal.`,
+    config: {
+      numberOfVideos: 1,
+      resolution: '720p',
+      aspectRatio: '16:9'
+    }
+  });
+
+  return operation;
+}
+
+export async function pollVideoOperation(operation: any) {
+  let currentOp = operation;
+  while (!currentOp.done) {
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    currentOp = await ai.operations.getVideosOperation({ operation: currentOp });
+  }
+  return currentOp;
+}
+
+export async function getDownloadUrl(downloadLink: string) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const response = await fetch(downloadLink, {
+    method: 'GET',
+    headers: {
+      'x-goog-api-key': apiKey || '',
+    },
+  });
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }
