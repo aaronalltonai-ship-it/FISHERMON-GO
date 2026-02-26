@@ -17,26 +17,10 @@ export interface RodCustomization {
   decal: string;
 }
 
-export interface PassportDestination {
-  lat: number;
-  lng: number;
-  label: string;
-}
-
 export interface PlayerState {
   money: number;
   level: number;
   xp: number;
-  streak: number;
-  lastWaterType?: string;
-  dailyRewardLastClaim?: string;
-  dailyQuest: {
-    date: string;
-    target: number;
-    progress: number;
-    reward: number;
-    complete: boolean;
-  };
   inventory: {
     rods: string[];
     lures: string[];
@@ -51,4 +35,5 @@ export interface PlayerState {
     boat: string;
   };
   rodCustomization: Record<string, RodCustomization>;
+  licenseExpiry: number;
 }
