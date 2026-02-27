@@ -14,10 +14,10 @@ export const SHOP_ITEMS = {
     { id: 'lure_diamond', name: 'Diamond Spoon', price: 150000, desc: 'Irresistible to rare fish.' },
   ],
   baits: [
-    { id: 'bait_bread', name: 'Bread', price: 150, desc: 'Cheap and effective for small fish.' },
-    { id: 'bait_worm', name: 'Worm', price: 750, desc: 'A classic choice.' },
-    { id: 'bait_minnow', name: 'Minnow', price: 2500, desc: 'Live bait for bigger catches.' },
-    { id: 'bait_magic', name: 'Magic Bait', price: 15000, desc: 'Increases rare encounter rate.' },
+    { id: 'bait_bread', name: 'Bread', price: 50, desc: 'Cheap and effective for small fish.' },
+    { id: 'bait_worm', name: 'Worm', price: 250, desc: 'A classic choice.' },
+    { id: 'bait_minnow', name: 'Minnow', price: 1000, desc: 'Live bait for bigger catches.' },
+    { id: 'bait_magic', name: 'Magic Bait', price: 5000, desc: 'Increases rare encounter rate.' },
   ],
   boats: [
     { id: 'boat_none', name: 'Shore Fishing', price: 0, desc: 'Fishing from the edge.' },
@@ -26,11 +26,11 @@ export const SHOP_ITEMS = {
     { id: 'boat_yacht', name: 'Luxury Yacht', price: 5000000, desc: 'The ultimate fishing experience.' },
   ],
   consumables: [
-    { id: 'chum_bucket', name: 'Chum Bucket', price: 500, desc: 'Throw in water to instantly attract fish and reduce wait time.' },
-    { id: 'premium_chum', name: 'Premium Chum', price: 2500, desc: 'Attracts bigger fish instantly.' },
-    { id: 'energy_drink', name: 'Energy Drink', price: 1000, desc: 'Instantly restores 50 stamina.' },
-    { id: 'stamina_boost', name: 'Stamina Boost', price: 5000, desc: 'Increases max stamina by 10 permanently.' },
-    { id: 'passport', name: 'World Passport', price: 100000, desc: 'Allows travel to exclusive international fishing spots and interaction with global players.' }
+    { id: 'chum_bucket', name: 'Chum Bucket', price: 200, desc: 'Throw in water to instantly attract fish and reduce wait time.' },
+    { id: 'premium_chum', name: 'Premium Chum', price: 1000, desc: 'Attracts bigger fish instantly.' },
+    { id: 'energy_drink', name: 'Energy Drink', price: 500, desc: 'Instantly restores 50 stamina.' },
+    { id: 'stamina_boost', name: 'Stamina Boost', price: 2500, desc: 'Increases max stamina by 10 permanently.' },
+    { id: 'passport', name: 'World Passport', price: 50000, desc: 'Allows travel to exclusive international fishing spots and interaction with global players.' }
   ]
 };
 

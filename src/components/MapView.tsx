@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Polygon } from 'react-leaflet';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Polygon, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Layers, Crosshair, Navigation, Loader2 } from 'lucide-react';
+import { Layers, Crosshair, Navigation, Loader2, Store, Target, User, MapPin, Fish, Shield, Trophy, Plus } from 'lucide-react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix Leaflet default icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -10,6 +11,15 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+const customIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
 });
 
 const playerIcon = new L.Icon({
@@ -21,38 +31,11 @@ const playerIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-const baitShopIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-const parkIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-const spotIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
 interface MapViewProps {
   spots: Array<{ lat: number; lng: number; name: string; type: string }>;
-  onProximityChange?: (proximity: { isNearBaitShop: boolean; isNearTournament: boolean }) => void;
-  overridePosition?: [number, number] | null;
-  overrideLabel?: string | null;
+  players?: any[];
+  onProximityChange?: (proximity: { isNearBaitShop: boolean; isNearTournament: boolean; isNearRanger: boolean; locationType: 'urban' | 'rural' }) => void;
+  onPlayerClick?: (player: any) => void;
 }
 
 interface MapFeature {
@@ -77,9 +60,76 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * c;
 }
 
-function LocationMarker({ position, label }: { position: [number, number] | null; label?: string }) {
-  const map = useMap();
+const baitShopIcon = L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="bg-orange-500 p-1.5 rounded-full border-2 border-white shadow-lg">
+      <Store size={16} className="text-white" />
+    </div>
+  ),
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
 
+const parkIcon = L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="bg-emerald-600 p-1.5 rounded-full border-2 border-white shadow-lg">
+      <Trophy size={16} className="text-white" />
+    </div>
+  ),
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+const spotIcon = L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="bg-blue-500 p-1.5 rounded-full border-2 border-white shadow-lg">
+      <Fish size={16} className="text-white" />
+    </div>
+  ),
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+const rangerIcon = L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="bg-blue-700 p-1.5 rounded-full border-2 border-white shadow-lg">
+      <Shield size={16} className="text-white" />
+    </div>
+  ),
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+const monsterShadowIcon = L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="relative">
+      <div className="w-32 h-16 bg-black/20 blur-xl rounded-[100%] animate-[monster-swim_10s_infinite_linear]" />
+      <div className="absolute inset-0 flex items-center justify-center opacity-10">
+        <Fish size={40} className="text-black rotate-90" />
+      </div>
+    </div>
+  ),
+  className: 'monster-shadow-container',
+  iconSize: [128, 64],
+  iconAnchor: [64, 32],
+});
+
+function MapEvents({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+function LocationMarker({ position }: { position: [number, number] | null }) {
+  const map = useMap();
+  
   useEffect(() => {
     if (position) {
       map.flyTo(position, map.getZoom());
@@ -88,24 +138,40 @@ function LocationMarker({ position, label }: { position: [number, number] | null
 
   return position === null ? null : (
     <Marker position={position} icon={playerIcon}>
-      <Popup>{label || 'You are here'}</Popup>
+      <Popup>You are here</Popup>
     </Marker>
   );
 }
 
-export function MapView({ spots, onProximityChange, overridePosition = null, overrideLabel = null }: MapViewProps) {
-  const [gpsPosition, setGpsPosition] = useState<[number, number] | null>(null);
+const otherPlayerIcon = (name: string, hasPassport: boolean) => L.divIcon({
+  html: renderToStaticMarkup(
+    <div className="relative flex flex-col items-center">
+      <div className={`p-1 rounded-full border-2 ${hasPassport ? 'bg-purple-600 border-yellow-400' : 'bg-blue-600 border-white'} shadow-lg`}>
+        <User size={16} className="text-white" />
+      </div>
+      <div className="absolute -top-6 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap font-bold border border-white/10">
+        {name}
+      </div>
+    </div>
+  ),
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+export function MapView({ spots, players = [], onProximityChange, onPlayerClick, onAddSpot }: MapViewProps & { onAddSpot?: (spot: { lat: number, lng: number, name: string, type: string }) => void }) {
+  const [position, setPosition] = useState<[number, number] | null>(null);
   const [mapType, setMapType] = useState<'normal' | 'satellite'>('normal');
   const [features, setFeatures] = useState<MapFeature[]>([]);
+  const [rangers, setRangers] = useState<Array<{ id: number; pos: [number, number]; target: [number, number] }>>([]);
+  const [monsters, setMonsters] = useState<Array<{ id: number; pos: [number, number]; target: [number, number] }>>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const mapRef = useRef<L.Map | null>(null);
-  const position = overridePosition ?? gpsPosition;
 
   useEffect(() => {
     if (navigator.geolocation) {
       const watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          setGpsPosition([pos.coords.latitude, pos.coords.longitude]);
+          setPosition([pos.coords.latitude, pos.coords.longitude]);
         },
         (err) => console.error(err),
         { enableHighAccuracy: true }
@@ -135,15 +201,15 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
         );
         out geom;
       `;
-
+      
       const endpoints = [
         'https://overpass-api.de/api/interpreter',
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass.osm.ch/api/interpreter'
       ];
 
-      let response: Response | undefined;
-      let lastError: unknown;
+      let response;
+      let lastError;
 
       for (const endpoint of endpoints) {
         try {
@@ -156,19 +222,19 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
           lastError = e;
         }
       }
-
+      
       if (!response || !response.ok) {
         throw new Error(`Overpass API error: ${response?.statusText || lastError}`);
       }
-
+      
       const text = await response.text();
-      let data: any;
+      let data;
       try {
         data = JSON.parse(text);
       } catch (e) {
-        throw new Error('Invalid JSON from Overpass API');
+        throw new Error("Invalid JSON from Overpass API");
       }
-
+      
       const newFeatures: MapFeature[] = [];
       if (data && data.elements) {
         data.elements.forEach((el: any) => {
@@ -186,12 +252,12 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
 
           if (coords.length > 0) {
             const isPolygon = coords.length > 2 && coords[0][0] === coords[coords.length-1][0] && coords[0][1] === coords[coords.length-1][1];
-
+            
             let centerLat = 0, centerLng = 0;
             coords.forEach(c => { centerLat += c[0]; centerLng += c[1]; });
             centerLat /= coords.length;
             centerLng /= coords.length;
-
+            
             newFeatures.push({
               id: el.id,
               type,
@@ -204,8 +270,26 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
         });
       }
       setFeatures(newFeatures);
+      
+      // Spawn rangers near parks
+      const parkFeatures = newFeatures.filter(f => f.type === 'park');
+      const newRangers = parkFeatures.map((p, i) => ({
+        id: i,
+        pos: [...p.center] as [number, number],
+        target: [p.center[0] + (Math.random() - 0.5) * 0.005, p.center[1] + (Math.random() - 0.5) * 0.005] as [number, number]
+      }));
+      setRangers(newRangers);
+
+      // Spawn monsters in large water bodies
+      const waterFeatures = newFeatures.filter(f => f.type === 'water' && f.isPolygon);
+      const newMonsters = waterFeatures.map((w, i) => ({
+        id: i,
+        pos: [...w.center] as [number, number],
+        target: [w.center[0] + (Math.random() - 0.5) * 0.01, w.center[1] + (Math.random() - 0.5) * 0.01] as [number, number]
+      }));
+      setMonsters(newMonsters);
     } catch (err) {
-      console.error('Failed to fetch features', err);
+      console.error("Failed to fetch features", err);
     } finally {
       setIsLoading(false);
     }
@@ -215,22 +299,83 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
     if (position && features.length === 0 && !isLoading) {
       fetchFeatures();
     }
-  }, [position, features.length, isLoading, fetchFeatures]);
+  }, [position]);
+
+  useEffect(() => {
+    if (rangers.length === 0) return;
+    
+    const interval = setInterval(() => {
+      setRangers(prev => prev.map(r => {
+        const dx = r.target[0] - r.pos[0];
+        const dy = r.target[1] - r.pos[1];
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if (dist < 0.0001) {
+          // New target
+          return {
+            ...r,
+            target: [r.pos[0] + (Math.random() - 0.5) * 0.005, r.pos[1] + (Math.random() - 0.5) * 0.005]
+          };
+        }
+        
+        // Move towards target
+        const speed = 0.00005;
+        return {
+          ...r,
+          pos: [r.pos[0] + (dx/dist) * speed, r.pos[1] + (dy/dist) * speed]
+        };
+      }));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [rangers.length]);
+
+  useEffect(() => {
+    if (monsters.length === 0) return;
+    
+    const interval = setInterval(() => {
+      setMonsters(prev => prev.map(m => {
+        const dx = m.target[0] - m.pos[0];
+        const dy = m.target[1] - m.pos[1];
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if (dist < 0.0001) {
+          return {
+            ...m,
+            target: [m.pos[0] + (Math.random() - 0.5) * 0.01, m.pos[1] + (Math.random() - 0.5) * 0.01]
+          };
+        }
+        
+        const speed = 0.00002; // Slower than rangers
+        return {
+          ...m,
+          pos: [m.pos[0] + (dx/dist) * speed, m.pos[1] + (dy/dist) * speed]
+        };
+      }));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [monsters.length]);
 
   const proximity = useMemo(() => {
-    if (!position || features.length === 0) return { isNearBaitShop: false, isNearTournament: false, nearestWater: null };
-
+    if (!position || features.length === 0) return { isNearBaitShop: false, isNearTournament: false, isNearRanger: false, nearestWater: null };
+    
     let isNearBaitShop = false;
     let isNearTournament = false;
-    let nearestWater: { feature: MapFeature; distance: number } | null = null;
+    let isNearRanger = false;
+    let nearestWater = null;
     let minWaterDist = Infinity;
+    let urbanFeatureCount = 0;
 
     features.forEach(f => {
       const dist = getDistance(position[0], position[1], f.center[0], f.center[1]);
-
+      
+      if (f.type === 'bait_shop') urbanFeatureCount++;
+      if (f.type === 'park') urbanFeatureCount++;
+      
       if (f.type === 'bait_shop' && dist < 100) isNearBaitShop = true;
       if (f.type === 'park' && dist < 300) isNearTournament = true;
-
+      
       if (f.type === 'water' || f.type === 'waterway') {
         if (dist < minWaterDist) {
           minWaterDist = dist;
@@ -239,19 +384,28 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
       }
     });
 
-    return { isNearBaitShop, isNearTournament, nearestWater };
-  }, [position, features]);
+    rangers.forEach(r => {
+      const dist = getDistance(position[0], position[1], r.pos[0], r.pos[1]);
+      if (dist < 50) isNearRanger = true;
+    });
+
+    const locationType: 'urban' | 'rural' = urbanFeatureCount > 3 ? 'urban' : 'rural';
+
+    return { isNearBaitShop, isNearTournament, isNearRanger, nearestWater, locationType };
+  }, [position, features, rangers]);
 
   useEffect(() => {
     if (onProximityChange) {
       onProximityChange({
         isNearBaitShop: proximity.isNearBaitShop,
-        isNearTournament: proximity.isNearTournament
+        isNearTournament: proximity.isNearTournament,
+        isNearRanger: proximity.isNearRanger,
+        locationType: proximity.locationType
       });
     }
-  }, [proximity.isNearBaitShop, proximity.isNearTournament, onProximityChange]);
+  }, [proximity.isNearBaitShop, proximity.isNearTournament, proximity.isNearRanger, proximity.locationType, onProximityChange]);
 
-  const center: [number, number] = position || [37.773972, -122.431297];
+  const center: [number, number] = position || [0, 0];
 
   return (
     <div className="absolute inset-0 z-0">
@@ -260,9 +414,6 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
         zoom={15} 
         className="w-full h-full"
         zoomControl={false}
-        whenCreated={(map) => {
-          mapRef.current = map;
-        }}
       >
         {mapType === 'normal' ? (
           <TileLayer
@@ -275,12 +426,40 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
           />
         )}
-
-        <LocationMarker
-          position={position}
-          label={overridePosition ? (overrideLabel || 'Passport destination') : 'You are here'}
-        />
-
+        
+        <LocationMarker position={position} />
+        <MapEvents onMapClick={(lat, lng) => {
+          const name = prompt("Enter a name for this fishing spot:");
+          if (name) {
+            onAddSpot?.({ lat, lng, name, type: 'custom' });
+          }
+        }} />
+        
+        {players.map(p => (
+          p.location && (
+            <Marker 
+              key={p.id} 
+              position={[p.location.lat, p.location.lng]} 
+              icon={otherPlayerIcon(p.name, p.hasPassport)}
+              eventHandlers={{
+                click: () => onPlayerClick?.(p)
+              }}
+            >
+              <Popup>
+                <div className="text-center">
+                  <div className="font-bold">{p.name}</div>
+                  <div className="text-xs text-gray-500">Level {p.level}</div>
+                  {p.hasPassport && (
+                    <div className="mt-1 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">
+                      World Traveler
+                    </div>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          )
+        ))}
+        
         {features.map(f => {
           if (f.type === 'bait_shop') {
             return (
@@ -303,23 +482,36 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
             );
           }
           return f.isPolygon ? (
-            <Polygon
-              key={f.id}
-              positions={f.geometry}
+            <Polygon 
+              key={f.id} 
+              positions={f.geometry} 
               pathOptions={{ className: 'flashing-water' }}
             >
               <Popup>{f.name || 'Water Body'}</Popup>
             </Polygon>
           ) : (
-            <Polyline
-              key={f.id}
-              positions={f.geometry}
+            <Polyline 
+              key={f.id} 
+              positions={f.geometry} 
               pathOptions={{ className: 'flashing-water' }}
             >
               <Popup>{f.name || 'Waterway'}</Popup>
             </Polyline>
           );
         })}
+
+        {rangers.map(r => (
+          <Marker key={`ranger-${r.id}`} position={r.pos} icon={rangerIcon}>
+            <Popup>
+              <div className="font-bold text-blue-700">Park Ranger</div>
+              <div className="text-xs">Patrolling for fishing licenses.</div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {monsters.map(m => (
+          <Marker key={`monster-${m.id}`} position={m.pos} icon={monsterShadowIcon} interactive={false} />
+        ))}
 
         {spots.map((spot, i) => (
           <Marker key={`spot-${i}`} position={[spot.lat, spot.lng]} icon={spotIcon}>
@@ -331,25 +523,25 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
         ))}
 
         {position && proximity.nearestWater && (
-          <Polyline
-            positions={[position, proximity.nearestWater.feature.center]}
-            pathOptions={{ color: '#f59e0b', dashArray: '5, 10', weight: 3 }}
+          <Polyline 
+            positions={[position, proximity.nearestWater.feature.center]} 
+            pathOptions={{ color: '#f59e0b', dashArray: '5, 10', weight: 3 }} 
           />
         )}
       </MapContainer>
 
       <div className="absolute bottom-32 right-4 z-[400] flex flex-col gap-2">
-        <button
+        <button 
           onClick={() => setMapType(t => t === 'normal' ? 'satellite' : 'normal')}
           className="bg-white p-3 rounded-full shadow-lg text-black hover:bg-gray-100"
           title="Toggle Map Type"
         >
           <Layers size={24} />
         </button>
-        <button
+        <button 
           onClick={() => {
-            if (position && mapRef.current) {
-              mapRef.current.flyTo(position, mapRef.current.getZoom());
+            if (position) {
+              setPosition([...position] as [number, number]);
             }
           }}
           className="bg-white p-3 rounded-full shadow-lg text-black hover:bg-gray-100"
@@ -357,7 +549,7 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
         >
           <Crosshair size={24} />
         </button>
-        <button
+        <button 
           onClick={fetchFeatures}
           className="bg-blue-600 p-3 rounded-full shadow-lg text-white hover:bg-blue-500 relative"
           title="Scan Nearby"
@@ -365,7 +557,7 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
           {isLoading ? <Loader2 size={24} className="animate-spin" /> : <Navigation size={24} />}
         </button>
       </div>
-
+      
       {proximity.nearestWater && (
         <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[400] bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-full border border-white/10 flex items-center gap-2 pointer-events-none">
           <Navigation size={16} className="text-blue-400" />
@@ -376,4 +568,3 @@ export function MapView({ spots, onProximityChange, overridePosition = null, ove
     </div>
   );
 }
-
