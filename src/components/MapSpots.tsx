@@ -3,17 +3,36 @@ import { motion } from 'motion/react';
 import { X, Map as MapIcon, Loader2, Navigation } from 'lucide-react';
 import { findNearbyFishingSpots } from '../lib/gemini';
 import Markdown from 'react-markdown';
+import { PassportDestination } from '../types';
 
 interface Props {
   onClose: () => void;
+  overrideDestination?: PassportDestination | null;
 }
 
-export function MapSpots({ onClose }: Props) {
+export function MapSpots({ onClose, overrideDestination = null }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ text: string, chunks: any[] } | null>(null);
 
   useEffect(() => {
+    const loadSpots = async (lat: number, lng: number) => {
+      try {
+        const res = await findNearbyFishingSpots(lat, lng);
+        setResult(res);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to find nearby spots.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (overrideDestination) {
+      loadSpots(overrideDestination.lat, overrideDestination.lng);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser.");
       setLoading(false);
@@ -21,16 +40,8 @@ export function MapSpots({ onClose }: Props) {
     }
 
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const res = await findNearbyFishingSpots(position.coords.latitude, position.coords.longitude);
-          setResult(res);
-        } catch (err) {
-          console.error(err);
-          setError("Failed to find nearby spots.");
-        } finally {
-          setLoading(false);
-        }
+      (position) => {
+        loadSpots(position.coords.latitude, position.coords.longitude);
       },
       (err) => {
         console.error(err);
@@ -38,7 +49,7 @@ export function MapSpots({ onClose }: Props) {
         setLoading(false);
       }
     );
-  }, []);
+  }, [overrideDestination]);
 
   return (
     <motion.div 
@@ -62,6 +73,11 @@ export function MapSpots({ onClose }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
+        {overrideDestination && (
+          <div className="glass-panel rounded-xl p-3 text-white/70 text-xs mb-4">
+            Passport mode active: {overrideDestination.label}
+          </div>
+        )}
         {loading ? (
           <div className="h-full flex flex-col items-center justify-center text-white/60">
             <Loader2 size={48} className="animate-spin mb-4 text-blue-400" />

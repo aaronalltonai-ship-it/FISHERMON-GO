@@ -1,4 +1,4 @@
-export interface FishData {
+﻿export interface FishData {
   id: string;
   name: string;
   description: string;
@@ -17,15 +17,30 @@ export interface RodCustomization {
   decal: string;
 }
 
+export interface PassportDestination {
+  lat: number;
+  lng: number;
+  label: string;
+}
+
+export interface DailyQuest {
+  date: string;
+  target: number;
+  progress: number;
+  reward: number;
+  complete: boolean;
+}
+
 export interface PlayerState {
-  id: string;
-  email: string;
-  name: string;
   money: number;
   level: number;
   xp: number;
-  hasPassport: boolean;
-  location?: { lat: number; lng: number };
+  streak: number;
+  lastWaterType?: string;
+  dailyRewardLastClaim?: string;
+  dailyQuest: DailyQuest;
+  lifetimeCatches: number;
+  lifetimeWeightKg: number;
   inventory: {
     rods: string[];
     lures: string[];
@@ -41,16 +56,5 @@ export interface PlayerState {
   };
   rodCustomization: Record<string, RodCustomization>;
   licenseExpiry: number;
-  stamina: number;
-  maxStamina: number;
-  lastStaminaRegen: number;
 }
 
-export interface Tournament {
-  id: string;
-  name: string;
-  location: { lat: number; lng: number };
-  active: boolean;
-  multiplier: number;
-  targetFish?: string;
-}
